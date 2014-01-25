@@ -41,6 +41,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <libgen.h>
 
 #ifdef _WIN32
 #include <io.h>
@@ -2442,6 +2443,19 @@ string MinidumpModule::debug_file() const {
     }
   }
 
+  // XXX: fallback for testing
+  // Try to manufacture debug-file from code-file
+  if (file.empty()) {
+    char *c_filename = strdup(code_file().c_str());
+    char *base = basename(c_filename);
+    char *ext = strrchr(base, '.');
+    if (ext) *ext = '\0';
+    file = base;
+    free(c_filename);
+
+    BPLOG(INFO) << "Generated debug_file '" << file << "' from code_file '" << *name_ << "'";
+  }
+
   // Relatively common case
   BPLOG_IF(INFO, file.empty()) << "MinidumpModule could not determine "
                                   "debug_file for " << *name_;
@@ -2500,6 +2514,12 @@ string MinidumpModule::debug_identifier() const {
                "%08X%x", cv_record_20->signature, cv_record_20->age);
       identifier = identifier_string;
     }
+  }
+  else
+  {
+    // XXX: for testing, use a default debug_identifier
+    // why not faillback to code-identifer ?
+    identifier = "000000000000000000000000000000000";
   }
 
   // TODO(mmentovai): if there's no usable CodeView record, there might be a

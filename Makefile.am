@@ -271,6 +271,14 @@ bin_PROGRAMS += \
 endif
 endif LINUX_HOST
 
+if CYGWIN_HOST
+if !DISABLE_TOOLS
+bin_PROGRAMS += \
+	src/tools/cygwin/dump_syms/dump_syms \
+	src/tools/cygwin/symupload/minidump_upload \
+	src/tools/cygwin/symupload/sym_upload
+endif
+endif
 
 ## Tests
 if !DISABLE_PROCESSOR
@@ -553,6 +561,35 @@ src_tools_linux_md2core_minidump_2_core_unittest_LDADD = \
 	$(PTHREAD_CFLAGS) $(PTHREAD_LIBS)
 
 endif LINUX_HOST
+
+if CYGWIN_HOST
+if !DISABLE_TOOLS
+src_tools_cygwin_dump_syms_dump_syms_SOURCES = \
+	src/common/dwarf_cfi_to_module.cc \
+	src/common/dwarf_cu_to_module.cc \
+	src/common/dwarf_line_to_module.cc \
+	src/common/language.cc \
+	src/common/module.cc \
+	src/common/dwarf/bytereader.cc \
+	src/common/dwarf/dwarf2diehandler.cc \
+	src/common/dwarf/dwarf2reader.cc \
+	src/common/pecoff/dump_symbols.cc \
+	src/tools/cygwin/dump_syms/dump_syms.cc
+src_tools_cygwin_dump_syms_dump_syms_LDADD = \
+	-lbfd -liberty -lintl -lz
+
+src_tools_cygwin_symupload_minidump_upload_SOURCES = \
+	src/common/linux/http_upload.cc \
+	src/tools/cygwin/symupload/minidump_upload.cc
+src_tools_cygwin_symupload_minidump_upload_LDADD = -ldl
+
+src_tools_cygwin_symupload_sym_upload_SOURCES = \
+	src/common/linux/http_upload.cc \
+	src/tools/cygwin/symupload/sym_upload.cc
+src_tools_cygwin_symupload_sym_upload_LDADD = -ldl
+
+endif
+endif
 
 if !DISABLE_PROCESSOR
 src_processor_address_map_unittest_SOURCES = \
