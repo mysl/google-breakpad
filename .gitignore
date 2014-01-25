@@ -1,0 +1,14 @@
+*.a
+*.o
+.deps
+.dirstamp
+Makefile
+Makefile.in
+autom4te.cache
+autotools/config.guess
+autotools/config.sub
+config.log
+config.status
+configure
+src/config.h
+src/stamp-h1
