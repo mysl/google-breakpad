@@ -30,8 +30,8 @@
 // file_id.h: Return a unique identifier for a file
 //
 
-#ifndef COMMON_LINUX_FILE_ID_H__
-#define COMMON_LINUX_FILE_ID_H__
+#ifndef COMMON_FILE_ID_H__
+#define COMMON_FILE_ID_H__
 
 #include <limits.h>
 
@@ -45,20 +45,6 @@ class FileID {
  public:
   explicit FileID(const char* path);
   ~FileID() {}
-
-  // Load the identifier for the elf file path specified in the constructor into
-  // |identifier|.  Return false if the identifier could not be created for the
-  // file.
-  // The current implementation will look for a .note.gnu.build-id
-  // section and use that as the file id, otherwise it falls back to
-  // XORing the first 4096 bytes of the .text section to generate an identifier.
-  bool ElfFileIdentifier(uint8_t identifier[kMDGUIDSize]);
-
-  // Load the identifier for the elf file mapped into memory at |base| into
-  // |identifier|.  Return false if the identifier could not be created for the
-  // file.
-  static bool ElfFileIdentifierFromMappedFile(const void* base,
-                                              uint8_t identifier[kMDGUIDSize]);
 
   // Convert the |identifier| data to a NULL terminated string.  The string will
   // be formatted as a UUID (e.g., 22F065BB-FC9C-49F7-80FE-26A7CEBD7BCE).
@@ -74,4 +60,4 @@ class FileID {
 
 }  // namespace google_breakpad
 
-#endif  // COMMON_LINUX_FILE_ID_H__
+#endif  // COMMON_FILE_ID_H__

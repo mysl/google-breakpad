@@ -61,6 +61,12 @@ AM_CFLAGS += -fPIC
 AM_CXXFLAGS += -fPIC
 endif
 
+if CYGWIN_HOST
+# don't have stab.h, don't build stabs support
+AM_CFLAGS += -DNO_STABS_SUPPORT
+AM_CXXFLAGS += -DNO_STABS_SUPPORT
+endif
+
 # Specify include paths for ac macros
 ACLOCAL_AMFLAGS = -I m4
 
@@ -102,9 +108,10 @@ src_client_linux_libbreakpad_client_a_SOURCES = \
 	src/client/minidump_file_writer.cc \
 	src/common/convert_UTF.c \
 	src/common/md5.cc \
+	src/common/file_id.cc \
 	src/common/string_conversion.cc \
 	src/common/linux/elfutils.cc \
-	src/common/linux/file_id.cc \
+	src/common/linux/elf_file_id.cc \
 	src/common/linux/guid_creator.cc \
 	src/common/linux/linux_libc_support.cc \
 	src/common/linux/memory_mapped_file.cc \
@@ -425,6 +432,7 @@ src_client_linux_linux_client_unittest_shlib_LDADD = \
 	src/client/minidump_file_writer.o \
 	src/common/convert_UTF.o \
 	src/common/md5.o \
+	src/common/file_id.o \
 	src/common/linux/elfutils.o \
 	src/common/linux/file_id.o \
 	src/common/linux/guid_creator.o \
@@ -474,6 +482,7 @@ src_tools_linux_dump_syms_dump_syms_SOURCES = \
 	src/common/dwarf_line_to_module.cc \
 	src/common/language.cc \
 	src/common/module.cc \
+	src/common/file_id.cc \
 	src/common/stabs_reader.cc \
 	src/common/stabs_to_module.cc \
 	src/common/dwarf/bytereader.cc \
@@ -482,7 +491,7 @@ src_tools_linux_dump_syms_dump_syms_SOURCES = \
 	src/common/linux/dump_symbols.cc \
 	src/common/linux/elf_symbols_to_module.cc \
 	src/common/linux/elfutils.cc \
-	src/common/linux/file_id.cc \
+	src/common/linux/elf_file_id.cc \
 	src/common/linux/linux_libc_support.cc \
 	src/common/linux/memory_mapped_file.cc \
 	src/common/linux/safe_readlink.cc \
@@ -572,13 +581,15 @@ src_tools_cygwin_dump_syms_dump_syms_SOURCES = \
 	src/common/dwarf_line_to_module.cc \
 	src/common/language.cc \
 	src/common/module.cc \
+	src/common/file_id.cc \
 	src/common/dwarf/bytereader.cc \
 	src/common/dwarf/dwarf2diehandler.cc \
 	src/common/dwarf/dwarf2reader.cc \
 	src/common/pecoff/dump_symbols.cc \
+	src/common/pecoff/pecoffutils.cc \
 	src/tools/cygwin/dump_syms/dump_syms.cc
 src_tools_cygwin_dump_syms_dump_syms_LDADD = \
-	-lbfd -liberty -lintl -lz
+	-liberty -lintl -lz
 
 endif
 endif

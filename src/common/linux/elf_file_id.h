@@ -1,6 +1,4 @@
-// -*- mode: c++ -*-
-
-// Copyright (c) 2011, Google Inc.
+// Copyright (c) 2006, Google Inc.
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -28,53 +26,38 @@
 // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// file_id.h: Return a unique identifier for a file
+//
 
-// dump_symbols.h: Read debugging information from a PECOFF file, and write
-// it out as a Breakpad symbol file.
+#ifndef COMMON_LINUX_FILE_ID_H__
+#define COMMON_LINUX_FILE_ID_H__
 
-#ifndef COMMON_PECOFF_DUMP_SYMBOLS_H__
-#define COMMON_PECOFF_DUMP_SYMBOLS_H__
-
-#include <iostream>
-#include <string>
-#include <vector>
-
-#include "common/symbol_data.h"
-#include "common/using_std_string.h"
+#include <limits.h>
+#include "common/file_id.h"
 
 namespace google_breakpad {
 
-class Module;
+class ElfFileID : FileID {
+ public:
+  explicit ElfFileID(const char* path);
+  ~ElfFileID() {}
 
-struct DumpOptions {
-  DumpOptions(SymbolData symbol_data, bool handle_inter_cu_refs)
-      : symbol_data(symbol_data),
-        handle_inter_cu_refs(handle_inter_cu_refs) {
-  }
+  // Load the identifier for the elf file path specified in the constructor into
+  // |identifier|.  Return false if the identifier could not be created for the
+  // file.
+  // The current implementation will look for a .note.gnu.build-id
+  // section and use that as the file id, otherwise it falls back to
+  // XORing the first 4096 bytes of the .text section to generate an identifier.
+  bool ElfFileIdentifier(uint8_t identifier[kMDGUIDSize]);
 
-  SymbolData symbol_data;
-  bool handle_inter_cu_refs;
+  // Load the identifier for the elf file mapped into memory at |base| into
+  // |identifier|.  Return false if the identifier could not be created for the
+  // file.
+  static bool ElfFileIdentifierFromMappedFile(const void* base,
+                                              uint8_t identifier[kMDGUIDSize]);
 };
-
-// Find all the debugging information in OBJ_FILE, an ELF executable
-// or shared library, and write it to SYM_STREAM in the Breakpad symbol
-// file format.
-// If OBJ_FILE has been stripped but contains a .gnu_debuglink section,
-// then look for the debug file in DEBUG_DIRS.
-// SYMBOL_DATA allows limiting the type of symbol data written.
-bool WriteSymbolFile(const string &obj_file,
-                     const std::vector<string>& debug_dirs,
-                     const DumpOptions& options,
-                     std::ostream &sym_stream);
-
-// As above, but simply return the debugging information in MODULE
-// instead of writing it to a stream. The caller owns the resulting
-// Module object and must delete it when finished.
-bool ReadSymbolData(const string& obj_file,
-                    const std::vector<string>& debug_dirs,
-                    const DumpOptions& options,
-                    Module** module);
 
 }  // namespace google_breakpad
 
-#endif  // COMMON_PECOFF_DUMP_SYMBOLS_H__
+#endif  // COMMON_LINUX_FILE_ID_H__

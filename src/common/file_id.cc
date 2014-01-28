@@ -1,6 +1,4 @@
-// -*- mode: c++ -*-
-
-// Copyright (c) 2011, Google Inc.
+// Copyright (c) 2006, Google Inc.
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -28,53 +26,53 @@
 // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// file_id.cc: Return a unique identifier for a file
+//
+// See file_id.h for documentation
+//
 
-// dump_symbols.h: Read debugging information from a PECOFF file, and write
-// it out as a Breakpad symbol file.
+#include "common/file_id.h"
 
-#ifndef COMMON_PECOFF_DUMP_SYMBOLS_H__
-#define COMMON_PECOFF_DUMP_SYMBOLS_H__
-
-#include <iostream>
-#include <string>
-#include <vector>
-
-#include "common/symbol_data.h"
-#include "common/using_std_string.h"
+#include <arpa/inet.h>
+#include <string.h>
 
 namespace google_breakpad {
 
-class Module;
+FileID::FileID(const char* path) {
+  strncpy(path_, path, sizeof(path_));
+}
 
-struct DumpOptions {
-  DumpOptions(SymbolData symbol_data, bool handle_inter_cu_refs)
-      : symbol_data(symbol_data),
-        handle_inter_cu_refs(handle_inter_cu_refs) {
+// static
+void FileID::ConvertIdentifierToString(const uint8_t identifier[kMDGUIDSize],
+                                       char* buffer, int buffer_length) {
+  uint8_t identifier_swapped[kMDGUIDSize];
+
+  // Endian-ness swap to match dump processor expectation.
+  memcpy(identifier_swapped, identifier, kMDGUIDSize);
+  uint32_t* data1 = reinterpret_cast<uint32_t*>(identifier_swapped);
+  *data1 = htonl(*data1);
+  uint16_t* data2 = reinterpret_cast<uint16_t*>(identifier_swapped + 4);
+  *data2 = htons(*data2);
+  uint16_t* data3 = reinterpret_cast<uint16_t*>(identifier_swapped + 6);
+  *data3 = htons(*data3);
+
+  int buffer_idx = 0;
+  for (unsigned int idx = 0;
+       (buffer_idx < buffer_length) && (idx < kMDGUIDSize);
+       ++idx) {
+    int hi = (identifier_swapped[idx] >> 4) & 0x0F;
+    int lo = (identifier_swapped[idx]) & 0x0F;
+
+    if (idx == 4 || idx == 6 || idx == 8 || idx == 10)
+      buffer[buffer_idx++] = '-';
+
+    buffer[buffer_idx++] = (hi >= 10) ? 'A' + hi - 10 : '0' + hi;
+    buffer[buffer_idx++] = (lo >= 10) ? 'A' + lo - 10 : '0' + lo;
   }
 
-  SymbolData symbol_data;
-  bool handle_inter_cu_refs;
-};
-
-// Find all the debugging information in OBJ_FILE, an ELF executable
-// or shared library, and write it to SYM_STREAM in the Breakpad symbol
-// file format.
-// If OBJ_FILE has been stripped but contains a .gnu_debuglink section,
-// then look for the debug file in DEBUG_DIRS.
-// SYMBOL_DATA allows limiting the type of symbol data written.
-bool WriteSymbolFile(const string &obj_file,
-                     const std::vector<string>& debug_dirs,
-                     const DumpOptions& options,
-                     std::ostream &sym_stream);
-
-// As above, but simply return the debugging information in MODULE
-// instead of writing it to a stream. The caller owns the resulting
-// Module object and must delete it when finished.
-bool ReadSymbolData(const string& obj_file,
-                    const std::vector<string>& debug_dirs,
-                    const DumpOptions& options,
-                    Module** module);
+  // NULL terminate
+  buffer[(buffer_idx < buffer_length) ? buffer_idx : buffer_idx - 1] = 0;
+}
 
 }  // namespace google_breakpad
-
-#endif  // COMMON_PECOFF_DUMP_SYMBOLS_H__

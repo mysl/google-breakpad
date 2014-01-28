@@ -32,9 +32,8 @@
 // See file_id.h for documentation
 //
 
-#include "common/linux/file_id.h"
+#include "common/linux/elf_file_id.h"
 
-#include <arpa/inet.h>
 #include <assert.h>
 #include <string.h>
 
@@ -47,10 +46,6 @@
 #include "third_party/lss/linux_syscall_support.h"
 
 namespace google_breakpad {
-
-FileID::FileID(const char* path) {
-  strncpy(path_, path, sizeof(path_));
-}
 
 // ELF note name and desc are 32-bits word padded.
 #define NOTE_PADDING(a) ((a + 3) & ~3)
@@ -139,7 +134,7 @@ static bool HashElfTextSection(const void *elf_mapped_base,
 }
 
 // static
-bool FileID::ElfFileIdentifierFromMappedFile(const void* base,
+bool ElfFileID::ElfFileIdentifierFromMappedFile(const void* base,
                                              uint8_t identifier[kMDGUIDSize]) {
   // Look for a build id note first.
   if (FindElfBuildIDNote(base, identifier))
@@ -149,44 +144,12 @@ bool FileID::ElfFileIdentifierFromMappedFile(const void* base,
   return HashElfTextSection(base, identifier);
 }
 
-bool FileID::ElfFileIdentifier(uint8_t identifier[kMDGUIDSize]) {
+bool ElfFileID::ElfFileIdentifier(uint8_t identifier[kMDGUIDSize]) {
   MemoryMappedFile mapped_file(path_);
   if (!mapped_file.data())  // Should probably check if size >= ElfW(Ehdr)?
     return false;
 
   return ElfFileIdentifierFromMappedFile(mapped_file.data(), identifier);
-}
-
-// static
-void FileID::ConvertIdentifierToString(const uint8_t identifier[kMDGUIDSize],
-                                       char* buffer, int buffer_length) {
-  uint8_t identifier_swapped[kMDGUIDSize];
-
-  // Endian-ness swap to match dump processor expectation.
-  memcpy(identifier_swapped, identifier, kMDGUIDSize);
-  uint32_t* data1 = reinterpret_cast<uint32_t*>(identifier_swapped);
-  *data1 = htonl(*data1);
-  uint16_t* data2 = reinterpret_cast<uint16_t*>(identifier_swapped + 4);
-  *data2 = htons(*data2);
-  uint16_t* data3 = reinterpret_cast<uint16_t*>(identifier_swapped + 6);
-  *data3 = htons(*data3);
-
-  int buffer_idx = 0;
-  for (unsigned int idx = 0;
-       (buffer_idx < buffer_length) && (idx < kMDGUIDSize);
-       ++idx) {
-    int hi = (identifier_swapped[idx] >> 4) & 0x0F;
-    int lo = (identifier_swapped[idx]) & 0x0F;
-
-    if (idx == 4 || idx == 6 || idx == 8 || idx == 10)
-      buffer[buffer_idx++] = '-';
-
-    buffer[buffer_idx++] = (hi >= 10) ? 'A' + hi - 10 : '0' + hi;
-    buffer[buffer_idx++] = (lo >= 10) ? 'A' + lo - 10 : '0' + lo;
-  }
-
-  // NULL terminate
-  buffer[(buffer_idx < buffer_length) ? buffer_idx : buffer_idx - 1] = 0;
 }
 
 }  // namespace google_breakpad
