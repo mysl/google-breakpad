@@ -68,22 +68,11 @@ using google_breakpad::DumpOptions;
 using google_breakpad::DwarfCFIToModule;
 using google_breakpad::DwarfCUToModule;
 using google_breakpad::DwarfLineToModule;
-using google_breakpad::GetSectionPointer;
-using google_breakpad::GetSectionSize;
-using google_breakpad::GetSectionRVA;
-using google_breakpad::GetSectionName;
 using google_breakpad::Module;
 #ifndef NO_STABS_SUPPORT
 using google_breakpad::StabsToModule;
 #endif
 using google_breakpad::scoped_ptr;
-using google_breakpad::Architecture;
-using google_breakpad::GetLoadingAddress;
-using google_breakpad::GetNumberOfSections;
-using google_breakpad::FindSectionByIndex;
-using google_breakpad::FindSectionByName;
-using google_breakpad::FindLinkedSection;
-using google_breakpad::Endianness;
 
 //
 // FDWrapper
@@ -143,10 +132,10 @@ class MmapWrapper {
 };
 
 #ifndef NO_STABS_SUPPORT
-template<typename FileFormatClass>
-bool LoadStabs(const typename FileFormatClass::Ehdr* header,
-               const typename FileFormatClass::Shdr* stab_section,
-               const typename FileFormatClass::Shdr* stabstr_section,
+template<typename ObjectFileReader>
+bool LoadStabs(const typename ObjectFileReader::Ehdr* header,
+               const typename ObjectFileReader::Shdr* stab_section,
+               const typename ObjectFileReader::Shdr* stabstr_section,
                const bool big_endian,
                Module* module) {
   // A callback object to handle data from the STABS reader.
@@ -155,10 +144,10 @@ bool LoadStabs(const typename FileFormatClass::Ehdr* header,
   // On Linux, STABS entries always have 32-bit values, regardless of the
   // address size of the architecture whose code they're describing, and
   // the strings are always "unitized".
-  const uint8_t* stabs = GetSectionPointer<FileFormatClass, uint8_t>(header, stab_section);
-  const uint8_t* stabstr = GetSectionPointer<FileFormatClass, uint8_t>(header, stabstr_section);
-  google_breakpad::StabsReader reader(stabs, GetSectionSize<FileFormatClass>(header, stab_section),
-                                      stabstr, GetSectionSize<FileFormatClass>(header, stabstr_section),
+  const uint8_t* stabs = ObjectFileReader::GetSectionPointer(header, stab_section);
+  const uint8_t* stabstr = ObjectFileReader::GetSectionPointer(header, stabstr_section);
+  google_breakpad::StabsReader reader(stabs, ObjectFileReader::GetSectionSize(header, stab_section),
+                                      stabstr, ObjectFileReader::GetSectionSize(header, stabstr_section),
                                       big_endian, 4, true, &handler);
   // Read the STABS data, and do post-processing.
   if (!reader.Process())
@@ -190,13 +179,13 @@ class DumperLineToModule: public DwarfCUToModule::LineToModuleHandler {
   dwarf2reader::ByteReader *byte_reader_;
 };
 
-template<typename FileFormatClass>
+template<typename ObjectFileReader>
 bool LoadDwarf(const string& dwarf_filename,
-               const typename FileFormatClass::Ehdr* header,
+               const typename ObjectFileReader::Ehdr* header,
                const bool big_endian,
                bool handle_inter_cu_refs,
                Module* module) {
-  typedef typename FileFormatClass::Shdr Shdr;
+  typedef typename ObjectFileReader::Section Shdr;
 
   const dwarf2reader::Endianness endianness = big_endian ?
       dwarf2reader::ENDIANNESS_BIG : dwarf2reader::ENDIANNESS_LITTLE;
@@ -208,12 +197,12 @@ bool LoadDwarf(const string& dwarf_filename,
                                             handle_inter_cu_refs);
 
   // Build a map of the file's sections.
-  int num_sections = GetNumberOfSections<FileFormatClass>(header);
+  int num_sections = ObjectFileReader::GetNumberOfSections(header);
   for (int i = 0; i < num_sections; i++) {
-    const Shdr* section = FindSectionByIndex<FileFormatClass>(header, i);
-    string name = GetSectionName<FileFormatClass>(header, section);
-    const char* contents = GetSectionPointer<FileFormatClass, char>(header, section);
-    file_context.AddSectionToSectionMap(name, contents, GetSectionSize<FileFormatClass>(header, section));
+    const Shdr section = ObjectFileReader::FindSectionByIndex(header, i);
+    string name = ObjectFileReader::GetSectionName(header, section);
+    const char* contents = (const char *) ObjectFileReader::GetSectionPointer(header, section);
+    file_context.AddSectionToSectionMap(name, contents, ObjectFileReader::GetSectionSize(header, section));
   }
 
   // Parse all the compilation units in the .debug_info section.
@@ -266,19 +255,19 @@ bool DwarfCFIRegisterNames(const char *architecture,
   return true;
 }
 
-template<typename FileFormatClass>
+template<typename ObjectFileReader>
 bool LoadDwarfCFI(const string& dwarf_filename,
-                  const typename FileFormatClass::Ehdr* header,
+                  const typename ObjectFileReader::Ehdr* header,
                   const char* section_name,
-                  const typename FileFormatClass::Shdr* section,
+                  const typename ObjectFileReader::Section section,
                   const bool eh_frame,
-                  const typename FileFormatClass::Shdr* got_section,
-                  const typename FileFormatClass::Shdr* text_section,
+                  const typename ObjectFileReader::Section got_section,
+                  const typename ObjectFileReader::Section text_section,
                   const bool big_endian,
                   Module* module) {
   // Find the appropriate set of register names for this file's
   // architecture.
-  const char *architecture = Architecture<FileFormatClass>(header);
+  const char *architecture = ObjectFileReader::Architecture(header);
   std::vector<string> register_names;
   if (!DwarfCFIRegisterNames(architecture, &register_names)) {
     return false;
@@ -288,23 +277,23 @@ bool LoadDwarfCFI(const string& dwarf_filename,
       dwarf2reader::ENDIANNESS_BIG : dwarf2reader::ENDIANNESS_LITTLE;
 
   // Find the call frame information and its size.
-  const char* cfi = GetSectionPointer<FileFormatClass, char>(header, section);
-  size_t cfi_size = GetSectionSize<FileFormatClass>(header, section);
+  const char* cfi = (const char *)ObjectFileReader::GetSectionPointer(header, section);
+  size_t cfi_size = ObjectFileReader::GetSectionSize(header, section);
 
   // Plug together the parser, handler, and their entourages.
   DwarfCFIToModule::Reporter module_reporter(dwarf_filename, section_name);
   DwarfCFIToModule handler(module, register_names, &module_reporter);
   dwarf2reader::ByteReader byte_reader(endianness);
 
-  byte_reader.SetAddressSize(FileFormatClass::kAddrSize);
+  byte_reader.SetAddressSize(ObjectFileReader::kAddrSize);
 
   // Provide the base addresses for .eh_frame encoded pointers, if
   // possible.
-  byte_reader.SetCFIDataBase(GetSectionRVA<FileFormatClass>(header, section), cfi);
+  byte_reader.SetCFIDataBase(ObjectFileReader::GetSectionRVA(header, section), cfi);
   if (got_section)
-    byte_reader.SetDataBase(GetSectionRVA<FileFormatClass>(header, got_section));
+    byte_reader.SetDataBase(ObjectFileReader::GetSectionRVA(header, got_section));
   if (text_section)
-    byte_reader.SetTextBase(GetSectionRVA<FileFormatClass>(header, text_section));
+    byte_reader.SetTextBase(ObjectFileReader::GetSectionRVA(header, text_section));
 
   dwarf2reader::CallFrameInfo::Reporter dwarf_reporter(dwarf_filename,
                                                        section_name);
@@ -344,7 +333,7 @@ bool LoadFile(const string& obj_file, MmapWrapper* map_wrapper,
 
 // Read the .gnu_debuglink and get the debug file name. If anything goes
 // wrong, return an empty string.
-template<typename FileFormatClass>
+template<typename ObjectFileReader>
 string ReadDebugLink(const char* debuglink,
                      size_t debuglink_size,
                      const string& obj_file,
@@ -397,10 +386,10 @@ string ReadDebugLink(const char* debuglink,
 // to follow the .gnu_debuglink section and load debug information from a
 // different file.
 //
-template<typename FileFormatClass>
+template<typename ObjectFileReader>
 class LoadSymbolsInfo {
  public:
-  typedef typename FileFormatClass::Addr Addr;
+  typedef typename ObjectFileReader::Addr Addr;
 
   explicit LoadSymbolsInfo(const std::vector<string>& dbg_dirs) :
     debug_dirs_(dbg_dirs),
@@ -465,18 +454,18 @@ class LoadSymbolsInfo {
                                       // between calls to LoadSymbols().
 };
 
-template<typename FileFormatClass>
+template<typename ObjectFileReader>
 bool LoadSymbols(const string& obj_file,
                  const bool big_endian,
-                 const typename FileFormatClass::Ehdr* header,
+                 const typename ObjectFileReader::ObjectFileBase header,
                  const bool read_gnu_debug_link,
-                 LoadSymbolsInfo<FileFormatClass>* info,
+                 LoadSymbolsInfo<ObjectFileReader>* info,
                  const DumpOptions& options,
                  Module* module) {
-  typedef typename FileFormatClass::Addr Addr;
-  typedef typename FileFormatClass::Shdr Shdr;
+  typedef typename ObjectFileReader::Addr Addr;
+  typedef typename ObjectFileReader::Section Shdr;
 
-  Addr loading_addr = GetLoadingAddress<FileFormatClass>(header);
+  Addr loading_addr = ObjectFileReader::GetLoadingAddress(header);
   module->SetLoadAddress(loading_addr);
   info->set_loading_addr(loading_addr, obj_file);
 
@@ -486,15 +475,15 @@ bool LoadSymbols(const string& obj_file,
   if (options.symbol_data != ONLY_CFI) {
 #ifndef NO_STABS_SUPPORT
     // Look for STABS debugging information, and load it if present.
-    const Shdr* stab_section =
-      FindSectionByName<FileFormatClass>(".stab", header);
+    const Shdr stab_section =
+        ObjectFileReader::FindSectionByName(".stab", header);
     if (stab_section) {
-      const Shdr* stabstr_section = FindLinkedSection<FileFormatClass>(stab_section);
+      const Shdr stabstr_section = ObjectFileReader::FindLinkedSection(stab_section);
       if (stabstr_section) {
         found_debug_info_section = true;
         found_usable_info = true;
         info->LoadedSection(".stab");
-        if (!LoadStabs<FileFormatClass>(header, stab_section, stabstr_section,
+        if (!LoadStabs<ObjectFileReader>(header, stab_section, stabstr_section,
                                  big_endian, module)) {
           fprintf(stderr, "%s: \".stab\" section found, but failed to load"
                   " STABS debugging information\n", obj_file.c_str());
@@ -504,13 +493,13 @@ bool LoadSymbols(const string& obj_file,
 #endif  // NO_STABS_SUPPORT
 
     // Look for DWARF debugging information, and load it if present.
-    const Shdr* dwarf_section =
-      FindSectionByName<FileFormatClass>(".debug_info", header);
+    const Shdr dwarf_section =
+        ObjectFileReader::FindSectionByName(".debug_info", header);
     if (dwarf_section) {
       found_debug_info_section = true;
       found_usable_info = true;
       info->LoadedSection(".debug_info");
-      if (!LoadDwarf<FileFormatClass>(obj_file, header, big_endian,
+      if (!LoadDwarf<ObjectFileReader>(obj_file, header, big_endian,
                                options.handle_inter_cu_refs, module)) {
         fprintf(stderr, "%s: \".debug_info\" section found, but failed to load "
                 "DWARF debugging information\n", obj_file.c_str());
@@ -521,15 +510,15 @@ bool LoadSymbols(const string& obj_file,
   if (options.symbol_data != NO_CFI) {
     // Dwarf Call Frame Information (CFI) is actually independent from
     // the other DWARF debugging information, and can be used alone.
-    const Shdr* dwarf_cfi_section =
-        FindSectionByName<FileFormatClass>(".debug_frame", header);
+    const Shdr dwarf_cfi_section =
+        ObjectFileReader::FindSectionByName(".debug_frame", header);
     if (dwarf_cfi_section) {
       // Ignore the return value of this function; even without call frame
       // information, the other debugging information could be perfectly
       // useful.
       info->LoadedSection(".debug_frame");
       bool result =
-          LoadDwarfCFI<FileFormatClass>(obj_file, header, ".debug_frame",
+          LoadDwarfCFI<ObjectFileReader>(obj_file, header, ".debug_frame",
                                  dwarf_cfi_section, false, 0, 0, big_endian,
                                  module);
       found_usable_info = found_usable_info || result;
@@ -537,19 +526,19 @@ bool LoadSymbols(const string& obj_file,
 
     // Linux C++ exception handling information can also provide
     // unwinding data.
-    const Shdr* eh_frame_section =
-        FindSectionByName<FileFormatClass>(".eh_frame", header);
+    const Shdr eh_frame_section =
+        ObjectFileReader::FindSectionByName(".eh_frame", header);
     if (eh_frame_section) {
       // Pointers in .eh_frame data may be relative to the base addresses of
       // certain sections. Provide those sections if present.
-      const Shdr* got_section =
-          FindSectionByName<FileFormatClass>(".got", header);
-      const Shdr* text_section =
-          FindSectionByName<FileFormatClass>(".text", header);
+      const Shdr got_section =
+          ObjectFileReader::FindSectionByName(".got", header);
+      const Shdr text_section =
+          ObjectFileReader::FindSectionByName(".text", header);
       info->LoadedSection(".eh_frame");
       // As above, ignore the return value of this function.
       bool result =
-          LoadDwarfCFI<FileFormatClass>(obj_file, header, ".eh_frame",
+          LoadDwarfCFI<ObjectFileReader>(obj_file, header, ".eh_frame",
                                  eh_frame_section, true,
                                  got_section, text_section, big_endian, module);
       found_usable_info = found_usable_info || result;
@@ -563,15 +552,15 @@ bool LoadSymbols(const string& obj_file,
 
     // Failed, but maybe there's a .gnu_debuglink section?
     if (read_gnu_debug_link) {
-      const Shdr* gnu_debuglink_section
-          = FindSectionByName<FileFormatClass>(".gnu_debuglink", header);
+      const Shdr gnu_debuglink_section
+          = ObjectFileReader::FindSectionByName(".gnu_debuglink", header);
       if (gnu_debuglink_section) {
         if (!info->debug_dirs().empty()) {
-          const char* debuglink_contents =
-              GetSectionPointer<FileFormatClass, char>(header, gnu_debuglink_section);
+          const char* debuglink_contents = (const char *)
+              ObjectFileReader::GetSectionPointer(header, gnu_debuglink_section);
           string debuglink_file
-              = ReadDebugLink<FileFormatClass>(debuglink_contents,
-                                               GetSectionSize<FileFormatClass>(header, gnu_debuglink_section),
+              = ReadDebugLink<ObjectFileReader>(debuglink_contents,
+                                               ObjectFileReader::GetSectionSize(header, gnu_debuglink_section),
                                         obj_file, info->debug_dirs());
           info->set_debuglink_file(debuglink_file);
         } else {
@@ -586,27 +575,8 @@ bool LoadSymbols(const string& obj_file,
       if (options.symbol_data != ONLY_CFI) {
         // The caller doesn't want to consult .gnu_debuglink.
         // See if there are export symbols available.
-        const Shdr* dynsym_section =
-          FindSectionByName<FileFormatClass>(".dynsym", header);
-        const Shdr* dynstr_section =
-          FindSectionByName<FileFormatClass>(".dynstr", header);
-        if (dynsym_section && dynstr_section) {
-          info->LoadedSection(".dynsym");
-
-          const uint8_t* dynsyms =
-              GetSectionPointer<FileFormatClass, uint8_t>(header, dynsym_section);
-          const uint8_t* dynstrs =
-              GetSectionPointer<FileFormatClass, uint8_t>(header, dynstr_section);
-          bool result =
-              SymbolsToModule<FileFormatClass>(dynsyms,
-                              GetSectionSize<FileFormatClass>(header, dynsym_section),
-                              dynstrs,
-                              GetSectionSize<FileFormatClass>(header, dynstr_section),
-                              big_endian,
-                              FileFormatClass::kAddrSize,
-                              module);
-          found_usable_info = found_usable_info || result;
-        }
+        bool result = ObjectFileReader::ExportedSymbolsToModule(header, module);
+        found_usable_info = found_usable_info || result;
       }
 
       // Return true if some usable information was found, since
@@ -651,41 +621,41 @@ string BaseFileName(const string &filename) {
   return base;
 }
 
-template<typename FileFormatClass>
-bool ReadSymbolDataFileFormatClass(const typename FileFormatClass::Ehdr* header,
+template<typename ObjectFileReader>
+bool ReadSymbolDataFromObjectFile(const typename ObjectFileReader::Ehdr* header,
                              const string& obj_filename,
                              const std::vector<string>& debug_dirs,
                              const DumpOptions& options,
                              Module** out_module) {
-  typedef typename FileFormatClass::Ehdr Ehdr;
-  typedef typename FileFormatClass::Shdr Shdr;
+  typedef typename ObjectFileReader::Ehdr Ehdr;
+  typedef typename ObjectFileReader::Shdr Shdr;
 
   *out_module = NULL;
 
   unsigned char identifier[16];
-  if (!FileFormatClass::FileIdentifierFromMappedFile(header, identifier)) {
+  if (!ObjectFileReader::FileIdentifierFromMappedFile(header, identifier)) {
     fprintf(stderr, "%s: unable to generate file identifier\n",
             obj_filename.c_str());
     return false;
   }
 
-  const char *architecture = Architecture<FileFormatClass>(header);
+  const char *architecture = ObjectFileReader::Architecture(header);
   if (!architecture) {
     return false;
   }
 
   // Figure out what endianness this file is.
   bool big_endian;
-  if (!Endianness<FileFormatClass>(header, &big_endian))
+  if (!ObjectFileReader::Endianness(header, &big_endian))
     return false;
 
   string name = BaseFileName(obj_filename);
   string os = "Linux";
   string id = FormatIdentifier(identifier);
 
-  LoadSymbolsInfo<FileFormatClass> info(debug_dirs);
+  LoadSymbolsInfo<ObjectFileReader> info(debug_dirs);
   scoped_ptr<Module> module(new Module(name, os, architecture, id));
-  if (!LoadSymbols<FileFormatClass>(obj_filename, big_endian, header,
+  if (!LoadSymbols<ObjectFileReader>(obj_filename, big_endian, header,
                              !debug_dirs.empty(), &info,
                              options, module.get())) {
     const string debuglink_file = info.debuglink_file();
@@ -700,14 +670,14 @@ bool ReadSymbolDataFileFormatClass(const typename FileFormatClass::Ehdr* header,
                  reinterpret_cast<const void**>(&debug_header)))
       return false;
 
-    if (!FileFormatClass::IsValid(debug_header)) {
+    if (!ObjectFileReader::IsValid(debug_header)) {
       fprintf(stderr, "Not a valid file: %s\n", debuglink_file.c_str());
       return false;
     }
 
     // Sanity checks to make sure everything matches up.
     const char *debug_architecture =
-        Architecture<FileFormatClass>(debug_header);
+        ObjectFileReader::Architecture(debug_header);
     if (!debug_architecture) {
       return false;
     }
@@ -720,7 +690,7 @@ bool ReadSymbolDataFileFormatClass(const typename FileFormatClass::Ehdr* header,
     }
 
     bool debug_big_endian;
-    if (!Endianness<FileFormatClass>(debug_header, &debug_big_endian))
+    if (!ObjectFileReader::Endianness(debug_header, &debug_big_endian))
       return false;
     if (debug_big_endian != big_endian) {
       fprintf(stderr, "%s and %s does not match in endianness\n",
@@ -728,7 +698,7 @@ bool ReadSymbolDataFileFormatClass(const typename FileFormatClass::Ehdr* header,
       return false;
     }
 
-    if (!LoadSymbols<FileFormatClass>(debuglink_file, debug_big_endian,
+    if (!LoadSymbols<ObjectFileReader>(debuglink_file, debug_big_endian,
                                debug_header, false, &info,
                                options, module.get())) {
       return false;

@@ -48,12 +48,12 @@ bool ReadSymbolDataInternal(const uint8_t* obj_file,
 
   int peclass = PeCoffClass(obj_file);
   if (peclass == PE32) {
-    return ReadSymbolDataFileFormatClass<PeCoffClass32>(
+    return ReadSymbolDataFromObjectFile<PeCoffClass32>(
         reinterpret_cast<const PeCoffClass32::Ehdr *>(obj_file), obj_filename, debug_dirs,
         options, module);
   }
   if (peclass == PE32PLUS) {
-    return ReadSymbolDataFileFormatClass<PeCoffClass64>(
+    return ReadSymbolDataFromObjectFile<PeCoffClass64>(
         reinterpret_cast<const PeCoffClass64::Ehdr *>(obj_file), obj_filename, debug_dirs,
         options, module);
   }

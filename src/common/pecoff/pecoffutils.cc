@@ -63,81 +63,10 @@ int PeCoffClass(const uint8_t* obj_base)
   return peOptionalHeader->mMagic;
 }
 
-// Convert a section from a header into a pointer to the mapped
-// address in the current process. Takes an extra template parameter
-// to specify the return type T to avoid having to dynamic_cast the
-// result.
-template<typename FileFormatClass, typename T>
-const T*
-GetSectionPointer(const typename FileFormatClass::Ehdr* header,
-                 const typename FileFormatClass::Shdr* section) {
-
-  return reinterpret_cast<const T*>(reinterpret_cast<uintptr_t>(header) +
-                                    section->PointerToRawData);
-}
-
-// Get the size of a section from a header
-template<typename FileFormatClass>
-typename FileFormatClass::Off
-GetSectionSize(const typename FileFormatClass::Ehdr* header,
-               const typename FileFormatClass::Shdr* section) {
-  return section->VirtualSize;
-  // XXX: trying to access beyond SizeOfRawData will not work well...
-}
-
-// Get RVA of a section from a header
-template<typename FileFormatClass>
-typename FileFormatClass::Off
-GetSectionRVA(const typename FileFormatClass::Ehdr* header,
-              const typename FileFormatClass::Shdr* section){
-  return section->VirtualAddress;
-}
-
-template<typename FileFormatClass>
-const char *
-GetSectionName(const typename FileFormatClass::Ehdr* header,
-               const typename FileFormatClass::Shdr* section) {
-
-    const uint8_t* obj_base = (uint8_t*) header;
-    uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
-    PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
-
-    // string table immediately follows symbol table
-    uint32_t string_table_offset = peHeader->mPointerToSymbolTable + peHeader->mNumberOfSymbols*sizeof(PeSymbol);
-    char *string_table = (char *)obj_base + string_table_offset;
-    uint32_t string_table_length = *(uint32_t *)string_table;
-
-    const char *name = section->Name;
-
-    // look up long section names in string table
-    if (name[0] == '/')
-      {
-      int offset = ::atoi(name+1);
-
-      if (offset > string_table_length)
-        printf(" offset exceeds string table length");
-      else {
-        name = string_table + offset;
-      }
-    }
-
-    return name;
-}
-
-// Get the endianness of HEADER. If it's invalid, return false.
-template<typename FileFormatClass>
-bool Endianness(const typename FileFormatClass::Ehdr* header,
-                   bool* big_endian) {
-  // XXX: characteristics IMAGE_FILE_BYTES_REVERSED_HI and/or certain machine types are big-endian
-  *big_endian = false;
-  return true;
-}
-
 // Return the breakpad symbol file identifier for the architecture of
 // HEADER.
-template<typename FileFormatClass>
-const char* Architecture(const typename FileFormatClass::Ehdr* header) {
-
+const char*
+PeCoffObjectFileReader::Architecture(ObjectFileBase header) {
   const uint8_t* obj_base = (uint8_t*) header;
   uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
   PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
@@ -165,11 +94,16 @@ const char* Architecture(const typename FileFormatClass::Ehdr* header) {
   }
 }
 
-// Find the preferred loading address of the binary.
-template<typename FileFormatClass>
-typename FileFormatClass::Addr GetLoadingAddress(
-    const typename FileFormatClass::Ehdr *header) {
+// Get the endianness of HEADER. If it's invalid, return false.
+bool PeCoffObjectFileReader::Endianness(ObjectFileBase header, bool* big_endian) {
+  // XXX: characteristics IMAGE_FILE_BYTES_REVERSED_HI and/or certain machine types are big-endian
+  *big_endian = false;
+  return true;
+}
 
+// Find the preferred loading address of the binary.
+PeCoffObjectFileReader::Addr
+PeCoffObjectFileReader::GetLoadingAddress(ObjectFileBase header) {
   const uint8_t* obj_base = (uint8_t*) header;
   uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
   PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
@@ -178,82 +112,137 @@ typename FileFormatClass::Addr GetLoadingAddress(
   return peOptionalHeader->mImageBase;
 }
 
-template<typename FileFormatClass>
-int GetNumberOfSections(const typename FileFormatClass::Ehdr* header) {
-    const uint8_t* obj_base = (uint8_t*) header;
-    uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
-    PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
-    return peHeader->mNumberOfSections;
+int
+PeCoffObjectFileReader::GetNumberOfSections(ObjectFileBase header) {
+  const uint8_t* obj_base = (uint8_t*) header;
+  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
+  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
+  return peHeader->mNumberOfSections;
 }
 
-template<typename FileFormatClass>
-const typename FileFormatClass::Shdr*
-FindSectionByIndex(const typename FileFormatClass::Ehdr* header, int i) {
-    const uint8_t* obj_base = (uint8_t*) header;
-    uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
-    PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
+const PeCoffObjectFileReader::Section
+PeCoffObjectFileReader::FindSectionByIndex(ObjectFileBase header, int i) {
+  const uint8_t* obj_base = (uint8_t*) header;
+  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
+  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
 
-    PeOptionalHeader* peOptionalHeader = (PeOptionalHeader*) ( (int32_t*) peHeader + 6);
-    uint64_t peOptionalHeaderOffset = (uint64_t) peOptionalHeader - (uint64_t) obj_base + 1;
-    int64_t sectionHeaderOffset = peOptionalHeaderOffset + peHeader->mSizeOfOptionalHeader;
-    PeSectionHeader* section_table = (PeSectionHeader*) ((uint32_t*)obj_base+(sectionHeaderOffset/4));
+  PeOptionalHeader* peOptionalHeader = (PeOptionalHeader*) ( (int32_t*) peHeader + 6);
+  uint64_t peOptionalHeaderOffset = (uint64_t) peOptionalHeader - (uint64_t) obj_base + 1;
+  int64_t sectionHeaderOffset = peOptionalHeaderOffset + peHeader->mSizeOfOptionalHeader;
+  PeSectionHeader* section_table = (PeSectionHeader*) ((uint32_t*)obj_base+(sectionHeaderOffset/4));
 
-    return &(section_table[i]);
+  return reinterpret_cast<const Section>(&(section_table[i]));
 }
 
 // Attempt to find a section named |section_name|
-template<typename FileFormatClass>
-const typename FileFormatClass::Shdr* FindSectionByName(
-    const char* section_name,
-    const void *mapped_base) {
+const PeCoffObjectFileReader::Section
+PeCoffObjectFileReader::FindSectionByName(const char* section_name, ObjectFileBase mapped_base) {
+  const uint8_t* obj_base = (uint8_t*) mapped_base;
+  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
+  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
 
-    const uint8_t* obj_base = (uint8_t*) mapped_base;
+  PeOptionalHeader* peOptionalHeader = (PeOptionalHeader*) ( (int32_t*) peHeader + 6);
+  uint64_t peOptionalHeaderOffset = (uint64_t) peOptionalHeader - (uint64_t) obj_base + 1;
+  int64_t sectionHeaderOffset = peOptionalHeaderOffset + peHeader->mSizeOfOptionalHeader;
+  PeSectionHeader* section_table = (PeSectionHeader*) ((uint32_t*)obj_base+(sectionHeaderOffset/4));
+
+  // string table immediately follows symbol table
+  uint32_t string_table_offset = peHeader->mPointerToSymbolTable + peHeader->mNumberOfSymbols*sizeof(PeSymbol);
+  char *string_table = (char *)obj_base + string_table_offset;
+  uint32_t string_table_length = *(uint32_t *)string_table;
+
+  for (int s = 0; s < peHeader->mNumberOfSections; s++) {
+    const char * name = section_table[s].Name;
+    printf("section name: %.8s", name);
+
+    // look up long section names in string table
+    if (name[0] == '/')
+    {
+      unsigned int offset = ::atoi(section_table[s].Name+1);
+
+      if (offset > string_table_length)
+        printf(" offset exceeds string table length");
+      else {
+        name = string_table + offset;
+        printf(" = %s", name);
+      }
+    }
+
+    printf("\n");
+    printf("Virtual Size %08x Virtual Address Offset %08x, Raw Size %08x, File Offset %08x, Characteristics %08x\n",
+           section_table[s].VirtualSize,
+           section_table[s].VirtualAddress,
+           section_table[s].SizeOfRawData,
+           section_table[s].PointerToRawData,
+           section_table[s].Characteristics);
+
+
+    if (::strcmp(section_name, name) == 0) {
+      return reinterpret_cast<const Section>(&(section_table[s]));
+    }
+  }
+
+  // nothing found
+  return NULL;
+}
+
+// Convert a section from a header into a pointer to the mapped
+// address in the current process. Takes an extra template parameter
+// to specify the return type T to avoid having to dynamic_cast the
+// result.
+const uint8_t *
+PeCoffObjectFileReader::GetSectionPointer(ObjectFileBase header, Section section) {
+  return reinterpret_cast<uint8_t *>(reinterpret_cast<uintptr_t>(header) +
+                                     reinterpret_cast<const PeSectionHeader *>(section)->PointerToRawData);
+}
+
+// Get the size of a section from a header
+PeCoffObjectFileReader::Offset
+PeCoffObjectFileReader::GetSectionSize(ObjectFileBase header, Section section) {
+  return reinterpret_cast<const PeSectionHeader *>(section)->VirtualSize;
+  // XXX: trying to access beyond SizeOfRawData will not work well...
+}
+
+// Get RVA of a section from a header
+PeCoffObjectFileReader::Offset
+PeCoffObjectFileReader::GetSectionRVA(ObjectFileBase header, Section section) {
+  return reinterpret_cast<const PeSectionHeader *>(section)->VirtualAddress;
+}
+
+// Get name of a section from a header
+const char *
+PeCoffObjectFileReader::GetSectionName(ObjectFileBase header,Section section) {
+    const uint8_t* obj_base = (uint8_t*) header;
     uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
     PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
-
-    PeOptionalHeader* peOptionalHeader = (PeOptionalHeader*) ( (int32_t*) peHeader + 6);
-    uint64_t peOptionalHeaderOffset = (uint64_t) peOptionalHeader - (uint64_t) obj_base + 1;
-    int64_t sectionHeaderOffset = peOptionalHeaderOffset + peHeader->mSizeOfOptionalHeader;
-    PeSectionHeader* section_table = (PeSectionHeader*) ((uint32_t*)obj_base+(sectionHeaderOffset/4));
 
     // string table immediately follows symbol table
     uint32_t string_table_offset = peHeader->mPointerToSymbolTable + peHeader->mNumberOfSymbols*sizeof(PeSymbol);
     char *string_table = (char *)obj_base + string_table_offset;
     uint32_t string_table_length = *(uint32_t *)string_table;
 
-    for (int s = 0; s < peHeader->mNumberOfSections; s++) {
-        const char * name = section_table[s].Name;
-        printf("section name: %.8s", name);
+    const char *name = reinterpret_cast<const PeSectionHeader *>(section)->Name;
 
-        // look up long section names in string table
-        if (name[0] == '/')
-          {
-            int offset = ::atoi(section_table[s].Name+1);
+    // look up long section names in string table
+    if (name[0] == '/')
+      {
+      unsigned int offset = ::atoi(name+1);
 
-            if (offset > string_table_length)
-              printf(" offset exceeds string table length");
-            else {
-              name = string_table + offset;
-              printf(" = %s", name);
-            }
-          }
-
-        printf("\n");
-        printf("Virtual Size %08x Virtual Address Offset %08x, Raw Size %08x, File Offset %08x, Characteristics %08x\n",
-               section_table[s].VirtualSize,
-               section_table[s].VirtualAddress,
-               section_table[s].SizeOfRawData,
-               section_table[s].PointerToRawData,
-               section_table[s].Characteristics);
-
-
-        if (::strcmp(section_name, name) == 0) {
-          return &(section_table[s]);
-        }
+      if (offset > string_table_length)
+        printf(" offset exceeds string table length");
+      else {
+        name = string_table + offset;
+      }
     }
 
-    // nothing found
-    return NULL;
+    return name;
+}
+
+// Load symbols from the object file's exported symbol table
+bool
+PeCoffObjectFileReader::ExportedSymbolsToModule(ObjectFileBase obj_file, Module *module) {
+  // XXX: load exported symbols
+  return true;
 }
 
 bool PeCoffFileIdentifierFromMappedFile(const uint8_t * header,
@@ -262,38 +251,5 @@ bool PeCoffFileIdentifierFromMappedFile(const uint8_t * header,
   ::strcpy((char *)identifier, "000000000000000000000000000000000");
   return true;
 }
-
-// template instantations
-template const char* Architecture<PeCoffClass32>(const PeCoffClass32::Ehdr* header);
-template char const *GetSectionPointer<PeCoffClass32>(const PeCoffClass32::Ehdr* header,
-                                                      const PeCoffClass32::Shdr* section);
-template unsigned char const *GetSectionPointer<PeCoffClass32>(const PeCoffClass32::Ehdr* header,
-                                                      const PeCoffClass32::Shdr* section);
-template PeCoffClass32::Off GetSectionSize<PeCoffClass32>(const PeCoffClass32::Ehdr* header,
-                                                          const PeCoffClass32::Shdr* section);
-template PeCoffClass32::Off GetSectionRVA<PeCoffClass32>(const PeCoffClass32::Ehdr* header,
-                                                         const PeCoffClass32::Shdr* section);
-template PeCoffClass32::Addr GetLoadingAddress<PeCoffClass32>(const PeCoffClass32::Ehdr *header);
-template const PeCoffClass32::Shdr* FindSectionByName<PeCoffClass32>(const char* section_name, const void *mapped_base);
-template bool Endianness<PeCoffClass32>(const PeCoffClass32::Ehdr* header, bool* big_endian);
-template int GetNumberOfSections<PeCoffClass32>(const PeCoffClass32::Ehdr* header);
-template const PeCoffClass32::Shdr* FindSectionByIndex<PeCoffClass32>(const PeCoffClass32::Ehdr* header, int i);
-template const char *GetSectionName<PeCoffClass32>(const PeCoffClass32::Ehdr* header, const PeCoffClass32::Shdr* section);
-
-template const char* Architecture<PeCoffClass64>(const PeCoffClass64::Ehdr* header);
-template char const *GetSectionPointer<PeCoffClass64>(const PeCoffClass64::Ehdr* header,
-                                                      const PeCoffClass64::Shdr* section);
-template unsigned char const *GetSectionPointer<PeCoffClass64>(const PeCoffClass64::Ehdr* header,
-                                                      const PeCoffClass64::Shdr* section);
-template PeCoffClass64::Off GetSectionSize<PeCoffClass64>(const PeCoffClass64::Ehdr* header,
-                                                          const PeCoffClass64::Shdr* section);
-template PeCoffClass64::Off GetSectionRVA<PeCoffClass64>(const PeCoffClass64::Ehdr* header,
-                                                         const PeCoffClass64::Shdr* section);
-template PeCoffClass64::Addr GetLoadingAddress<PeCoffClass64>(const PeCoffClass64::Ehdr *header);
-template const PeCoffClass64::Shdr* FindSectionByName<PeCoffClass64>(const char* section_name, const void *mapped_base);
-template bool Endianness<PeCoffClass64>(const PeCoffClass64::Ehdr* header, bool* big_endian);
-template int GetNumberOfSections<PeCoffClass64>(const PeCoffClass64::Ehdr* header);
-template const PeCoffClass64::Shdr* FindSectionByIndex<PeCoffClass64>(const PeCoffClass64::Ehdr* header, int i);
-template const char *GetSectionName<PeCoffClass64>(const PeCoffClass64::Ehdr* header, const PeCoffClass64::Shdr* section);
 
 }
