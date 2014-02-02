@@ -43,6 +43,7 @@ int PeCoffClass(const uint8_t* obj_file);
 bool PeCoffFileIdentifierFromMappedFile(const uint8_t * header,
                                         uint8_t *identifier);
 
+template <typename PeOptionalHeaderType>
 class PeCoffObjectFileReader {
 public:
   typedef const uint8_t * ObjectFileBase;
@@ -112,31 +113,24 @@ public:
   }
 
 private:
+  typedef PeOptionalHeaderType PeOptionalHeader;
+
   // Helper functions
+  static PeOptionalHeader* GetOptionalHeader(ObjectFileBase header);
   static PeSectionHeader* GetSectionTable(ObjectFileBase header);
   static const char* GetStringTable(ObjectFileBase header);
 };
 
-class PeCoffClass32 : public PeCoffObjectFileReader {
+class PeCoffClass32 : public PeCoffObjectFileReader<Pe32OptionalHeader> {
 public:
   static const int kClass = PE32;
   static const size_t kAddrSize = 4;
-
-  static Addr GetLoadingAddress(ObjectFileBase header);
-private:
-  static Pe32OptionalHeader* GetOptionalHeader(ObjectFileBase header);
-  static PeSectionHeader* GetSectionTable(ObjectFileBase header);
 };
 
-class PeCoffClass64 : public PeCoffObjectFileReader {
+class PeCoffClass64 : public PeCoffObjectFileReader<Pe32PlusOptionalHeader> {
 public:
   static const int kClass = PE32PLUS;
   static const size_t kAddrSize = 8;
-
-  static Addr GetLoadingAddress(ObjectFileBase header);
-private:
-  static Pe32PlusOptionalHeader* GetOptionalHeader(ObjectFileBase header);
-  static PeSectionHeader* GetSectionTable(ObjectFileBase header);
 };
 
 }  // namespace google_breakpad
