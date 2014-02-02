@@ -38,8 +38,7 @@
 
 namespace google_breakpad {
 
-bool IsValidPeCoff(const uint8_t* obj_base)
-{
+bool IsValidPeCoff(const uint8_t* obj_base) {
   // offset 0x3c - find offset to PE signature
   uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
 
@@ -54,19 +53,19 @@ bool IsValidPeCoff(const uint8_t* obj_base)
   return true;
 }
 
-int PeCoffClass(const uint8_t* obj_base)
-{
+int PeCoffClass(const uint8_t* obj_base) {
   uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
   PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
-  PeOptionalHeader* peOptionalHeader = (PeOptionalHeader*) ((uint32_t*)peHeader + 6);
-
-  return peOptionalHeader->mMagic;
+  uint32_t* peOptionalHeader =  ((uint32_t*)peHeader + 6);
+  // We need to read the magic before we know if this a Pe32OptionalHeader or
+  // Pe32PlusOptionalHeader
+  return *peOptionalHeader;
 }
 
 // Return the breakpad symbol file identifier for the architecture of
 // HEADER.
 const char*
-PeCoffObjectFileReader::Architecture(ObjectFileBase header) {
+PeCoffObjectFileReader::Architecture(PeCoffObjectFileReader::ObjectFileBase header) {
   const uint8_t* obj_base = (uint8_t*) header;
   uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
   PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
@@ -96,20 +95,73 @@ PeCoffObjectFileReader::Architecture(ObjectFileBase header) {
 
 // Get the endianness of HEADER. If it's invalid, return false.
 bool PeCoffObjectFileReader::Endianness(ObjectFileBase header, bool* big_endian) {
-  // XXX: characteristics IMAGE_FILE_BYTES_REVERSED_HI and/or certain machine types are big-endian
+  // XXX: Note sure what bigendian PECOFF looks like: characteristics flag
+  // IMAGE_FILE_BYTES_REVERSED_HI and/or certain machine types are big-endian
   *big_endian = false;
   return true;
 }
 
-// Find the preferred loading address of the binary.
-PeCoffObjectFileReader::Addr
-PeCoffObjectFileReader::GetLoadingAddress(ObjectFileBase header) {
+// Helper functions
+
+// Some functions need to be Specialized for PE32 or PE32+ to account for
+// difference in size of the OptionalHeader.
+// XXX: perhaps base PeCoffObjectFileReader on a templatized base class which
+// just implements these functions?
+
+// Specialized for PE32
+Pe32OptionalHeader *
+PeCoffClass32::GetOptionalHeader(ObjectFileBase header) {
   const uint8_t* obj_base = (uint8_t*) header;
   uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
   PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
-  PeOptionalHeader* peOptionalHeader = (PeOptionalHeader*) ((uint32_t*)peHeader + 6);
+  Pe32OptionalHeader* peOptionalHeader = (Pe32OptionalHeader*) ((uint32_t*)peHeader + 6);
+  return peOptionalHeader;
+}
 
-  return peOptionalHeader->mImageBase;
+PeSectionHeader*
+PeCoffClass32::GetSectionTable(ObjectFileBase header) {
+  const uint8_t* obj_base = (uint8_t*) header;
+  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
+  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
+  Pe32OptionalHeader* peOptionalHeader = GetOptionalHeader(header);
+  uint64_t peOptionalHeaderOffset = (uint64_t) peOptionalHeader - (uint64_t) obj_base;
+  int64_t sectionHeaderOffset = peOptionalHeaderOffset + peHeader->mSizeOfOptionalHeader;
+  PeSectionHeader* section_table = (PeSectionHeader*) (obj_base+sectionHeaderOffset);
+  return section_table;
+}
+
+// specialized for PE32+
+Pe32PlusOptionalHeader *
+PeCoffClass64::GetOptionalHeader(ObjectFileBase header) {
+  const uint8_t* obj_base = (uint8_t*) header;
+  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
+  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
+  Pe32PlusOptionalHeader* peOptionalHeader = (Pe32PlusOptionalHeader*) ((uint32_t*)peHeader + 6);
+  return peOptionalHeader;
+}
+
+PeSectionHeader*
+PeCoffClass64::GetSectionTable(ObjectFileBase header) {
+  const uint8_t* obj_base = (uint8_t*) header;
+  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
+  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
+  Pe32PlusOptionalHeader* peOptionalHeader = GetOptionalHeader(header);
+  uint64_t peOptionalHeaderOffset = (uint64_t) peOptionalHeader - (uint64_t) obj_base;
+  int64_t sectionHeaderOffset = peOptionalHeaderOffset + peHeader->mSizeOfOptionalHeader;
+  PeSectionHeader* section_table = (PeSectionHeader*) (obj_base+sectionHeaderOffset);
+  return section_table;
+}
+
+const char *
+PeCoffObjectFileReader::GetStringTable(ObjectFileBase header) {
+  const uint8_t* obj_base = (uint8_t*) header;
+  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
+  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
+
+  // string table immediately follows symbol table
+  uint32_t string_table_offset = peHeader->mPointerToSymbolTable + peHeader->mNumberOfSymbols*sizeof(PeSymbol);
+  const char *string_table = (char *)obj_base + string_table_offset;
+  return string_table;
 }
 
 int
@@ -120,17 +172,23 @@ PeCoffObjectFileReader::GetNumberOfSections(ObjectFileBase header) {
   return peHeader->mNumberOfSections;
 }
 
+// Find the preferred loading address of the binary.
+// again, specialized for different optional header
+PeCoffObjectFileReader::Addr
+PeCoffClass32::GetLoadingAddress(ObjectFileBase header) {
+  Pe32OptionalHeader* peOptionalHeader = GetOptionalHeader(header);
+  return peOptionalHeader->mImageBase;
+}
+
+PeCoffObjectFileReader::Addr
+PeCoffClass64::GetLoadingAddress(ObjectFileBase header) {
+  Pe32PlusOptionalHeader* peOptionalHeader = GetOptionalHeader(header);
+  return peOptionalHeader->mImageBase;
+}
+
 const PeCoffObjectFileReader::Section
 PeCoffObjectFileReader::FindSectionByIndex(ObjectFileBase header, int i) {
-  const uint8_t* obj_base = (uint8_t*) header;
-  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
-  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
-
-  PeOptionalHeader* peOptionalHeader = (PeOptionalHeader*) ( (int32_t*) peHeader + 6);
-  uint64_t peOptionalHeaderOffset = (uint64_t) peOptionalHeader - (uint64_t) obj_base + 1;
-  int64_t sectionHeaderOffset = peOptionalHeaderOffset + peHeader->mSizeOfOptionalHeader;
-  PeSectionHeader* section_table = (PeSectionHeader*) ((uint32_t*)obj_base+(sectionHeaderOffset/4));
-
+  PeSectionHeader* section_table = GetSectionTable(header);
   return reinterpret_cast<const Section>(&(section_table[i]));
 }
 
@@ -140,15 +198,10 @@ PeCoffObjectFileReader::FindSectionByName(const char* section_name, ObjectFileBa
   const uint8_t* obj_base = (uint8_t*) mapped_base;
   uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
   PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
-
-  PeOptionalHeader* peOptionalHeader = (PeOptionalHeader*) ( (int32_t*) peHeader + 6);
-  uint64_t peOptionalHeaderOffset = (uint64_t) peOptionalHeader - (uint64_t) obj_base + 1;
-  int64_t sectionHeaderOffset = peOptionalHeaderOffset + peHeader->mSizeOfOptionalHeader;
-  PeSectionHeader* section_table = (PeSectionHeader*) ((uint32_t*)obj_base+(sectionHeaderOffset/4));
+  PeSectionHeader* section_table = GetSectionTable(mapped_base);
 
   // string table immediately follows symbol table
-  uint32_t string_table_offset = peHeader->mPointerToSymbolTable + peHeader->mNumberOfSymbols*sizeof(PeSymbol);
-  char *string_table = (char *)obj_base + string_table_offset;
+  const char *string_table = GetStringTable(mapped_base);
   uint32_t string_table_length = *(uint32_t *)string_table;
 
   for (int s = 0; s < peHeader->mNumberOfSections; s++) {
@@ -212,13 +265,7 @@ PeCoffObjectFileReader::GetSectionRVA(ObjectFileBase header, Section section) {
 // Get name of a section from a header
 const char *
 PeCoffObjectFileReader::GetSectionName(ObjectFileBase header,Section section) {
-    const uint8_t* obj_base = (uint8_t*) header;
-    uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
-    PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
-
-    // string table immediately follows symbol table
-    uint32_t string_table_offset = peHeader->mPointerToSymbolTable + peHeader->mNumberOfSymbols*sizeof(PeSymbol);
-    char *string_table = (char *)obj_base + string_table_offset;
+    const char *string_table = GetStringTable(header);
     uint32_t string_table_length = *(uint32_t *)string_table;
 
     const char *name = reinterpret_cast<const PeSectionHeader *>(section)->Name;

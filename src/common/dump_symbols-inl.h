@@ -133,9 +133,9 @@ class MmapWrapper {
 
 #ifndef NO_STABS_SUPPORT
 template<typename ObjectFileReader>
-bool LoadStabs(const typename ObjectFileReader::Ehdr* header,
-               const typename ObjectFileReader::Shdr* stab_section,
-               const typename ObjectFileReader::Shdr* stabstr_section,
+bool LoadStabs(const typename ObjectFileReader::ObjectFileBase header,
+               const typename ObjectFileReader::Section stab_section,
+               const typename ObjectFileReader::Section stabstr_section,
                const bool big_endian,
                Module* module) {
   // A callback object to handle data from the STABS reader.
@@ -181,7 +181,7 @@ class DumperLineToModule: public DwarfCUToModule::LineToModuleHandler {
 
 template<typename ObjectFileReader>
 bool LoadDwarf(const string& dwarf_filename,
-               const typename ObjectFileReader::Ehdr* header,
+               const typename ObjectFileReader::ObjectFileBase header,
                const bool big_endian,
                bool handle_inter_cu_refs,
                Module* module) {
@@ -257,7 +257,7 @@ bool DwarfCFIRegisterNames(const char *architecture,
 
 template<typename ObjectFileReader>
 bool LoadDwarfCFI(const string& dwarf_filename,
-                  const typename ObjectFileReader::Ehdr* header,
+                  const typename ObjectFileReader::ObjectFileBase header,
                   const char* section_name,
                   const typename ObjectFileReader::Section section,
                   const bool eh_frame,
@@ -622,13 +622,14 @@ string BaseFileName(const string &filename) {
 }
 
 template<typename ObjectFileReader>
-bool ReadSymbolDataFromObjectFile(const typename ObjectFileReader::Ehdr* header,
-                             const string& obj_filename,
-                             const std::vector<string>& debug_dirs,
-                             const DumpOptions& options,
-                             Module** out_module) {
-  typedef typename ObjectFileReader::Ehdr Ehdr;
-  typedef typename ObjectFileReader::Shdr Shdr;
+bool ReadSymbolDataFromObjectFile(
+    const typename ObjectFileReader::ObjectFileBase header,
+    const string& obj_filename,
+    const std::vector<string>& debug_dirs,
+    const DumpOptions& options,
+    Module** out_module) {
+
+  typedef typename ObjectFileReader::Section Shdr;
 
   *out_module = NULL;
 
@@ -650,7 +651,7 @@ bool ReadSymbolDataFromObjectFile(const typename ObjectFileReader::Ehdr* header,
     return false;
 
   string name = BaseFileName(obj_filename);
-  string os = "Linux";
+  string os = "windows";
   string id = FormatIdentifier(identifier);
 
   LoadSymbolsInfo<ObjectFileReader> info(debug_dirs);
@@ -665,7 +666,7 @@ bool ReadSymbolDataFromObjectFile(const typename ObjectFileReader::Ehdr* header,
     // Load debuglink file.
     fprintf(stderr, "Found debugging info in %s\n", debuglink_file.c_str());
     MmapWrapper debug_map_wrapper;
-    const Ehdr* debug_header = NULL;
+    typename ObjectFileReader::ObjectFileBase debug_header = NULL;
     if (!LoadFile(debuglink_file, &debug_map_wrapper,
                  reinterpret_cast<const void**>(&debug_header)))
       return false;
