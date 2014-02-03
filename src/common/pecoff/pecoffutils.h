@@ -28,6 +28,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // pecoffutils.h: Utilities for dealing with PECOFF files
+//
 
 #ifndef COMMON_PECOFF_PECOFFUTILS_H__
 #define COMMON_PECOFF_PECOFFUTILS_H__

@@ -27,12 +27,14 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// pecoff.h: PECOFF file format
+//
+
 #ifndef COMMON_PECOFF_PECOFF_H__
 #define COMMON_PECOFF_PECOFF_H__
 
 #include <stdint.h>
 
-// PE/COFF file format definitions
 #define IMAGE_FILE_MAGIC                     0x00004550 /* "PE\0\0" */
 
 #define IMAGE_FILE_MACHINE_UNKNOWN           0x0000
