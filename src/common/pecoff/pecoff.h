@@ -239,4 +239,18 @@ struct __attribute__ ((__packed__))  PeSymbol
     uint8_t  n_numaux;   /* Auxiliary Count */
 };
 
+struct PeExportTable {
+  uint32_t Flags;
+  uint32_t TimeDateStamp;
+  uint16_t MajorVersion;
+  uint16_t MinorVErsion;
+  uint32_t NameRVA;
+  uint32_t OrdinalBase;
+  uint32_t AddressTableEntries;
+  uint32_t NumberofNamePointers;
+  uint32_t ExportAddressTableRVA;
+  uint32_t NamePointerRVA;
+  uint32_t OrdinalTableRVA;
+};
+
 #endif// COMMON_PECOFF_PECOFF_H__

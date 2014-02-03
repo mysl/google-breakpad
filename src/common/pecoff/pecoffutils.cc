@@ -106,7 +106,10 @@ PeCoffObjectFileReader<PeOptionalHeaderType>::Endianness(ObjectFileBase header, 
   return true;
 }
 
+//
 // Helper functions
+//
+
 template<typename PeOptionalHeaderType>
 typename PeCoffObjectFileReader<PeOptionalHeaderType>::PeOptionalHeader *
 PeCoffObjectFileReader<PeOptionalHeaderType>::GetOptionalHeader(ObjectFileBase header) {
@@ -142,6 +145,47 @@ PeCoffObjectFileReader<PeOptionalHeaderType>::GetStringTable(ObjectFileBase head
   const char *string_table = (char *)obj_base + string_table_offset;
   return string_table;
 }
+
+template<class PeOptionalHeaderType>
+PeDataDirectory *
+PeCoffObjectFileReader<PeOptionalHeaderType>::GetDataDirectoryEntry(ObjectFileBase header, int entry) {
+  // locate the data directory, immediately following the optional header
+  PeOptionalHeader* peOptionalHeader = GetOptionalHeader(header);
+  PeDataDirectory *data_directory = (PeDataDirectory *)((uint32_t *)(&peOptionalHeader->mNumberOfRvaAndSizes) + 1);
+  uint32_t data_directory_size = peOptionalHeader->mNumberOfRvaAndSizes;
+
+  // locate the required directory entry, if present
+  if (data_directory_size < entry)
+    return NULL;
+
+  return &data_directory[entry];
+}
+
+template<typename PeOptionalHeaderType>
+const uint8_t *
+PeCoffObjectFileReader<PeOptionalHeaderType>::ConvertRVAToPointer(ObjectFileBase header,
+                                                                  unsigned int rva) {
+  // find which section contains the rva to compute it's mapped address
+  PeSectionHeader* section_table = GetSectionTable(header);
+  for (int s = 0; s < GetNumberOfSections(header); s++) {
+    PeSectionHeader* section =  &(section_table[s]);
+
+    if ((rva >= section->VirtualAddress) &&
+        (rva < (section->VirtualAddress + section->SizeOfRawData)))
+    {
+      uint32_t offset = rva - section->VirtualAddress;
+      const uint8_t *pointer = GetSectionPointer(header, (Section)section) + offset;
+      return pointer;
+    }
+  }
+
+  fprintf(stderr, "No section containing could be found containing RVA %x\n", rva);
+  return NULL;
+}
+
+//
+//
+//
 
 template<typename PeOptionalHeaderType>
 int
@@ -260,37 +304,17 @@ bool
 PeCoffObjectFileReader<PeOptionalHeaderType>::GetBuildID(ObjectFileBase header,
                                                          uint8_t identifier[kMDGUIDSize]) {
 
-  // locate the data directory, immediately following the optional header
-  PeOptionalHeader* peOptionalHeader = GetOptionalHeader(header);
-  PeDataDirectory *data_directory = (PeDataDirectory *)((uint32_t *)(&peOptionalHeader->mNumberOfRvaAndSizes) + 1);
-  uint32_t data_directory_size = peOptionalHeader->mNumberOfRvaAndSizes;
-
   // locate the debug directory, if present
-  // find which section contains it's rva to compute it's mapped address
-  if (data_directory_size < PE_DEBUG_DATA)
+  PeDataDirectory * data_directory_debug_entry = GetDataDirectoryEntry(header, PE_DEBUG_DATA);
+  if (!data_directory_debug_entry)
     return false;
 
-  PeCoffObjectFileReader::Addr debug_directory_rva = data_directory[PE_DEBUG_DATA].VirtualAddress;
-  uint32_t debug_directory_size = data_directory[PE_DEBUG_DATA].Size;
-  PeDebugDirectory *debug_directory = NULL;
-
+  uint32_t debug_directory_size = data_directory_debug_entry->Size;
   if (debug_directory_size == 0)
     return false;
 
-  PeSectionHeader* section_table = GetSectionTable(header);
-  for (int s = 0; s < GetNumberOfSections(header); s++) {
-    PeSectionHeader* section =  &(section_table[s]);
-
-    if ((debug_directory_rva >= section->VirtualAddress) &&
-        (debug_directory_rva < (section->VirtualAddress + section->SizeOfRawData)))
-    {
-      uint32_t offset = debug_directory_rva - section->VirtualAddress;
-      debug_directory = (PeDebugDirectory *)(GetSectionPointer(header, (Section)section) + offset);
-    }
-  }
-
-  if (debug_directory == NULL)
-  {
+  PeDebugDirectory *debug_directory = (PeDebugDirectory *)ConvertRVAToPointer(header, data_directory_debug_entry->VirtualAddress);
+  if (debug_directory == NULL) {
     fprintf(stderr, "No section containing the debug directory VMA could be found\n");
     return false;
   }
@@ -339,9 +363,62 @@ PeCoffObjectFileReader<PeOptionalHeaderType>::HashTextSection(ObjectFileBase hea
 // Load symbols from the object file's exported symbol table
 template<class PeOptionalHeaderType>
 bool
-PeCoffObjectFileReader<PeOptionalHeaderType>::ExportedSymbolsToModule(ObjectFileBase obj_file, Module *module) {
-  // XXX: load exported symbols
-  return true;
+PeCoffObjectFileReader<PeOptionalHeaderType>::ExportedSymbolsToModule(ObjectFileBase header, Module *module) {
+
+  // locate the export table, if present
+  PeDataDirectory *data_directory_export_entry = GetDataDirectoryEntry(header, PE_EXPORT_TABLE);
+  if (data_directory_export_entry && data_directory_export_entry->Size != 0) {
+    PeExportTable *export_table = (PeExportTable *)ConvertRVAToPointer(header, data_directory_export_entry->VirtualAddress);
+    uint32_t *eat = (uint32_t *)ConvertRVAToPointer(header, export_table->ExportAddressTableRVA);
+    uint32_t *enpt = (uint32_t *)ConvertRVAToPointer(header, export_table->NamePointerRVA);
+    uint16_t *eot = (uint16_t *)ConvertRVAToPointer(header, export_table->OrdinalTableRVA);
+
+    // process the export name pointer table
+    for (unsigned int i = 0; i < export_table->NumberofNamePointers; i++) {
+      // look up the name for the export
+      uint32_t export_name_rva = enpt[i];
+      if (export_name_rva == 0)
+        continue;
+      char *export_name = (char *)ConvertRVAToPointer(header, export_name_rva);
+
+      // find the corresponding export address table entry
+      uint16_t export_ordinal = eot[i];
+      if ((export_ordinal < export_table->OrdinalBase) ||
+          (export_ordinal >= (export_table->OrdinalBase + export_table->AddressTableEntries))) {
+        fprintf(stderr, "exported ordinal %d out of range for EAT!\n", export_ordinal);
+        continue;
+      }
+      unsigned int eat_index = export_ordinal - export_table->OrdinalBase;
+      uint32_t export_rva = eat[eat_index];
+
+      // if the export's address lies inside the export table, it's a forwarded
+      // export, which we can ignore
+      if ((export_rva >= data_directory_export_entry->VirtualAddress) &&
+          (export_rva < (data_directory_export_entry->VirtualAddress + data_directory_export_entry->Size)))
+        continue;
+
+      Module::Extern *ext = new Module::Extern;
+      ext->name = export_name;
+      ext->address = export_rva + GetLoadingAddress(header);
+      module->AddExtern(ext);
+    }
+
+    return true;
+  }
+
+  // report if a COFF symbol table exists, but we don't use it (yet)
+  // According to the PECOFF spec. COFF debugging information is deprecated.
+  // We don't know of any tools which produce that and don't produce DWARF or
+  // MS CodeView debug information.
+  const uint8_t* obj_base = (uint8_t*) header;
+  uint32_t* peOffsetPtr = (uint32_t*) (obj_base + 0x3c);
+  PeHeader* peHeader = (PeHeader*) (obj_base+*peOffsetPtr);
+
+  if (peHeader->mPointerToSymbolTable) {
+    fprintf(stderr, "COFF debug symbols present but are not implemented\n");
+  }
+
+  return false;
 }
 
 // instantiation of templated classes

@@ -126,6 +126,8 @@ private:
   static PeOptionalHeader* GetOptionalHeader(ObjectFileBase header);
   static PeSectionHeader* GetSectionTable(ObjectFileBase header);
   static const char* GetStringTable(ObjectFileBase header);
+  static PeDataDirectory *GetDataDirectoryEntry(ObjectFileBase header, int entry);
+  static const uint8_t *ConvertRVAToPointer(ObjectFileBase header, unsigned int rva);
 };
 
 class PeCoffClass32 : public PeCoffObjectFileReader<Pe32OptionalHeader> {
