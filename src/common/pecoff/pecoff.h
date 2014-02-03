@@ -148,6 +148,64 @@ struct Pe32PlusOptionalHeader {
     uint32_t mNumberOfRvaAndSizes;
 };
 
+struct PeDataDirectory {
+  uint32_t VirtualAddress;
+  uint32_t Size;
+};
+
+#define PE_EXPORT_TABLE                 0
+#define PE_IMPORT_TABLE                 1
+#define PE_RESOURCE_TABLE               2
+#define PE_EXCEPTION_TABLE              3
+#define PE_CERTIFICATE_TABLE            4
+#define PE_BASE_RELOCATION_TABLE        5
+#define PE_DEBUG_DATA                   6
+#define PE_ARCHITECTURE                 7
+#define PE_GLOBAL_PTR                   8
+#define PE_TLS_TABLE                    9
+#define PE_LOAD_CONFIG_TABLE            10
+#define PE_BOUND_IMPORT_TABLE           11
+#define PE_IMPORT_ADDRESS_TABLE         12
+#define PE_DELAY_IMPORT_DESCRIPTOR      13
+#define PE_CLR_RUNTIME_HEADER           14
+
+struct PeDebugDirectory {
+  uint32_t Characteristics;
+  uint32_t TimeDateStamp;
+  uint16_t MajorVersion;
+  uint16_t MinorVersion;
+  uint32_t Type;
+  uint32_t SizeOfData;
+  uint32_t AddressOfRawData;
+  uint32_t PointerToRawData;
+};
+
+#define IMAGE_DEBUG_TYPE_UNKNOWN          0
+#define IMAGE_DEBUG_TYPE_COFF             1
+#define IMAGE_DEBUG_TYPE_CODEVIEW         2
+#define IMAGE_DEBUG_TYPE_FPO              3
+#define IMAGE_DEBUG_TYPE_MISC             4
+#define IMAGE_DEBUG_TYPE_EXCEPTION        5
+#define IMAGE_DEBUG_TYPE_FIXUP            6
+#define IMAGE_DEBUG_TYPE_OMAP_TO_SRC      7
+#define IMAGE_DEBUG_TYPE_OMAP_FROM_SRC    8
+#define IMAGE_DEBUG_TYPE_BORLAND          9
+#define IMAGE_DEBUG_TYPE_RESERVED10       10
+#define IMAGE_DEBUG_TYPE_CLSID            11
+
+struct CV_INFO_PDB70
+{
+  uint32_t CvSignature;
+  uint8_t  Signature[16];
+  uint32_t Age;
+  uint8_t PdbFileName[];
+};
+
+#define CODEVIEW_PDB70_CVSIGNATURE 0x53445352 // "RSDS"
+#define CODEVIEW_PDB20_CVSIGNATURE 0x3031424e // "NB10"
+#define CODEVIEW_CV50_CVSIGNATURE  0x3131424e // "NB11"
+#define CODEVIEW_CV41_CVSIGNATURE  0x3930424e // “NB09"
+
 struct PeSectionHeader {
   char  Name[8];
   union {

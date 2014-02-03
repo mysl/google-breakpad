@@ -182,7 +182,6 @@ PeCoffObjectFileReader<PeOptionalHeaderType>::FindSectionByName(const char* sect
 
   for (int s = 0; s < peHeader->mNumberOfSections; s++) {
     const char * name = section_table[s].Name;
-    printf("section name: %.8s", name);
 
     // look up long section names in string table
     if (name[0] == '/')
@@ -190,21 +189,11 @@ PeCoffObjectFileReader<PeOptionalHeaderType>::FindSectionByName(const char* sect
       unsigned int offset = ::atoi(section_table[s].Name+1);
 
       if (offset > string_table_length)
-        printf(" offset exceeds string table length");
-      else {
+        fprintf(stderr, "section name offset %d exceeds string table length",
+                offset);
+      else
         name = string_table + offset;
-        printf(" = %s", name);
-      }
     }
-
-    printf("\n");
-    printf("Virtual Size %08x Virtual Address Offset %08x, Raw Size %08x, File Offset %08x, Characteristics %08x\n",
-           section_table[s].VirtualSize,
-           section_table[s].VirtualAddress,
-           section_table[s].SizeOfRawData,
-           section_table[s].PointerToRawData,
-           section_table[s].Characteristics);
-
 
     if (::strcmp(section_name, name) == 0) {
       return reinterpret_cast<const Section>(&(section_table[s]));
@@ -256,13 +245,95 @@ PeCoffObjectFileReader<PeOptionalHeaderType>::GetSectionName(ObjectFileBase head
       unsigned int offset = ::atoi(name+1);
 
       if (offset > string_table_length)
-        printf(" offset exceeds string table length");
-      else {
+        fprintf(stderr, "section name offset %d exceeds string table length",
+                offset);
+      else
         name = string_table + offset;
-      }
     }
 
     return name;
+}
+
+// Get build-id
+template<typename PeOptionalHeaderType>
+bool
+PeCoffObjectFileReader<PeOptionalHeaderType>::GetBuildID(ObjectFileBase header,
+                                                         uint8_t identifier[kMDGUIDSize]) {
+
+  // locate the data directory, immediately following the optional header
+  PeOptionalHeader* peOptionalHeader = GetOptionalHeader(header);
+  PeDataDirectory *data_directory = (PeDataDirectory *)((uint32_t *)(&peOptionalHeader->mNumberOfRvaAndSizes) + 1);
+  uint32_t data_directory_size = peOptionalHeader->mNumberOfRvaAndSizes;
+
+  // locate the debug directory, if present
+  // find which section contains it's rva to compute it's mapped address
+  if (data_directory_size < PE_DEBUG_DATA)
+    return false;
+
+  PeCoffObjectFileReader::Addr debug_directory_rva = data_directory[PE_DEBUG_DATA].VirtualAddress;
+  uint32_t debug_directory_size = data_directory[PE_DEBUG_DATA].Size;
+  PeDebugDirectory *debug_directory = NULL;
+
+  if (debug_directory_size == 0)
+    return false;
+
+  PeSectionHeader* section_table = GetSectionTable(header);
+  for (int s = 0; s < GetNumberOfSections(header); s++) {
+    PeSectionHeader* section =  &(section_table[s]);
+
+    if ((debug_directory_rva >= section->VirtualAddress) &&
+        (debug_directory_rva < (section->VirtualAddress + section->SizeOfRawData)))
+    {
+      uint32_t offset = debug_directory_rva - section->VirtualAddress;
+      debug_directory = (PeDebugDirectory *)(GetSectionPointer(header, (Section)section) + offset);
+    }
+  }
+
+  if (debug_directory == NULL)
+  {
+    fprintf(stderr, "No section containing the debug directory VMA could be found\n");
+    return false;
+  }
+
+  // search the debug directory for a codeview entry
+  for (int i = 0; i < debug_directory_size/sizeof(PeDebugDirectory); i++) {
+    if (debug_directory[i].Type == IMAGE_DEBUG_TYPE_CODEVIEW) {
+      // interpret the codeview record to get build-id
+      CV_INFO_PDB70 *codeview_record = (CV_INFO_PDB70 *)(header + debug_directory[i].PointerToRawData);
+      if ((codeview_record->CvSignature) == CODEVIEW_PDB70_CVSIGNATURE) {
+        memcpy(identifier, codeview_record->Signature, kMDGUIDSize);
+        return true;
+      }
+      else {
+        fprintf(stderr, "Unhandled codeview signature %x\n", codeview_record->CvSignature);
+      }
+    }
+  }
+
+  fprintf(stderr, "No codeview entry in debug directory\n");
+  return false;
+}
+
+template<typename PeOptionalHeaderType>
+bool
+PeCoffObjectFileReader<PeOptionalHeaderType>::HashTextSection(ObjectFileBase header,
+                               uint8_t identifier[kMDGUIDSize]) {
+  Section text_section;
+  Offset text_size;
+
+  if (!(text_section = FindSectionByName(".text", header)) ||
+      ((text_size = GetSectionSize(header, text_section)) == 0))
+    return false;
+
+  memset(identifier, 0, kMDGUIDSize);
+  const uint8_t* ptr = GetSectionPointer(header, text_section);
+  const uint8_t* ptr_end = ptr + std::min(text_size, 4096U);
+  while (ptr < ptr_end) {
+    for (unsigned i = 0; i < kMDGUIDSize; i++)
+      identifier[i] ^= ptr[i];
+    ptr += kMDGUIDSize;
+  }
+  return true;
 }
 
 // Load symbols from the object file's exported symbol table
@@ -270,14 +341,6 @@ template<class PeOptionalHeaderType>
 bool
 PeCoffObjectFileReader<PeOptionalHeaderType>::ExportedSymbolsToModule(ObjectFileBase obj_file, Module *module) {
   // XXX: load exported symbols
-  return true;
-}
-
-bool
-PeCoffFileIdentifierFromMappedFile(const uint8_t * header,
-                                   uint8_t *identifier){
-  // XXX: locate and read file-id from CV record, otherwise compute hash
-  ::memset((char *)identifier, 0, 16);
   return true;
 }
 

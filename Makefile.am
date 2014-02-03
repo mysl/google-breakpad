@@ -1,3 +1,4 @@
+
 ## Process this file with automake to produce Makefile.in
 
 # Copyright (c) 2011, Google Inc.
@@ -587,6 +588,7 @@ src_tools_cygwin_dump_syms_dump_syms_SOURCES = \
 	src/common/dwarf/dwarf2reader.cc \
 	src/common/pecoff/dump_symbols.cc \
 	src/common/pecoff/pecoffutils.cc \
+	src/common/pecoff/pecoff_file_id.cc \
 	src/tools/cygwin/dump_syms/dump_syms.cc
 src_tools_cygwin_dump_syms_dump_syms_LDADD = \
 	-liberty -lintl -lz

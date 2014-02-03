@@ -27,37 +27,32 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// file_id.h: Return a unique identifier for a file
+// pecoff_file_id.h: Return a unique identifier for a file
 //
 
-#ifndef COMMON_FILE_ID_H__
-#define COMMON_FILE_ID_H__
+#ifndef COMMON_PECOFF_PECOFF_FILE_ID_H__
+#define COMMON_PECOFF_PECOFF_FILE_ID_H__
 
 #include <limits.h>
-
-#include "common/linux/guid_creator.h"
+#include "common/file_id.h"
 
 namespace google_breakpad {
 
-static const size_t kMDGUIDSize = sizeof(MDGUID);
-
-class FileID {
+class PeCoffFileID : FileID {
  public:
-  explicit FileID(const char* path);
-  ~FileID() {}
+  explicit PeCoffFileID(const char* path);
+  ~PeCoffFileID() {}
 
-  // Convert the |identifier| data to a NULL terminated string.  The string will
-  // be formatted as a UUID (e.g., 22F065BB-FC9C-49F7-80FE-26A7CEBD7BCE).
-  // The |buffer| should be at least 37 bytes long to receive all of the data
-  // and termination.  Shorter buffers will contain truncated data.
-  static void ConvertIdentifierToString(const uint8_t identifier[kMDGUIDSize],
-                                        char* buffer, int buffer_length);
-
- protected:
-  // Storage for the path specified
-  char path_[PATH_MAX];
+  // Load the identifier for the PECOFF file mapped into memory at |base| into
+  // |identifier|.  Return false if the identifier could not be created for the
+  // file.
+  // The current implementation will look for a CodeView file signature
+  // and use that as the file id, otherwise it falls back to
+  // XORing the first 4096 bytes of the .text section to generate an identifier.
+  static bool PeCoffFileIdentifierFromMappedFile(const void* base,
+                                                 uint8_t identifier[kMDGUIDSize]);
 };
 
 }  // namespace google_breakpad
 
-#endif  // COMMON_FILE_ID_H__
+#endif  // COMMON_PECOFF_PECOFF_FILE_ID_H__

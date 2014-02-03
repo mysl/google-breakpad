@@ -289,11 +289,15 @@ bool LoadDwarfCFI(const string& dwarf_filename,
 
   // Provide the base addresses for .eh_frame encoded pointers, if
   // possible.
-  byte_reader.SetCFIDataBase(ObjectFileReader::GetSectionRVA(header, section), cfi);
+  byte_reader.SetCFIDataBase(ObjectFileReader::GetSectionRVA(header, section) +
+                             ObjectFileReader::GetLoadingAddress(header),
+                             cfi);
   if (got_section)
-    byte_reader.SetDataBase(ObjectFileReader::GetSectionRVA(header, got_section));
+    byte_reader.SetDataBase(ObjectFileReader::GetSectionRVA(header, got_section) +
+                              ObjectFileReader::GetLoadingAddress(header));
   if (text_section)
-    byte_reader.SetTextBase(ObjectFileReader::GetSectionRVA(header, text_section));
+    byte_reader.SetTextBase(ObjectFileReader::GetSectionRVA(header, text_section) +
+                             ObjectFileReader::GetLoadingAddress(header));
 
   dwarf2reader::CallFrameInfo::Reporter dwarf_reporter(dwarf_filename,
                                                        section_name);

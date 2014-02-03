@@ -28,20 +28,18 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // pecoffutils.h: Utilities for dealing with PECOFF files
-//
 
 #ifndef COMMON_PECOFF_PECOFFUTILS_H__
 #define COMMON_PECOFF_PECOFFUTILS_H__
 
 #include "pecoff.h"
+#include "pecoff_file_id.h"
 #include "common/module.h"
 
 namespace google_breakpad {
 
 bool IsValidPeCoff(const uint8_t* obj_file);
 int PeCoffClass(const uint8_t* obj_file);
-bool PeCoffFileIdentifierFromMappedFile(const uint8_t * header,
-                                        uint8_t *identifier);
 
 template <typename PeOptionalHeaderType>
 class PeCoffObjectFileReader {
@@ -60,11 +58,20 @@ public:
   // file.
   static bool FileIdentifierFromMappedFile(ObjectFileBase obj_file,
                                            uint8_t *identifier) {
-    return PeCoffFileIdentifierFromMappedFile(obj_file, identifier);
+    return PeCoffFileID::PeCoffFileIdentifierFromMappedFile(obj_file, identifier);
   };
 
   // Load symbols from the object file's exported symbol table
   static bool ExportedSymbolsToModule(ObjectFileBase obj_file, Module *module);
+
+  //
+  // Helpers for PeCoffFileID
+  //
+
+  // Get the build-id
+  static bool GetBuildID(ObjectFileBase header, uint8_t identifier[kMDGUIDSize]);
+  // Has the text section
+  static bool HashTextSection(ObjectFileBase header, uint8_t identifier[kMDGUIDSize]);
 
   //
   // Header information
