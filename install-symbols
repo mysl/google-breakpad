@@ -1,0 +1,26 @@
+#!/bin/sh
+SYMBOLROOT=/tmp/symbols
+
+extension=${1##*.}
+if [ $extension != "sym" ]
+then
+  # not a .sym file so use dump_syms to create .sym file
+  ./build/src/tools/cygwin/dump_syms/dump_syms.exe $1 >temp.sym
+else
+  # it's already a .sym file
+  # d2u it in case it came from symsrv_convert.exe
+  cp $1 temp.sym
+  d2u temp.sym
+fi
+
+# extract buildid and filename from .sym file
+FILE=`head -1 temp.sym | cut -f5 -d' '`
+BUILDID=`head -1 temp.sym | cut -f4 -d' '`
+SYMFILE=${FILE%.*}.sym
+
+# ensure the needed directory exists
+SYMBOLPATH=$SYMBOLROOT/$FILE/$BUILDID
+mkdir -p $SYMBOLPATH
+
+#  install, with .sym extension
+mv temp.sym $SYMBOLPATH/$SYMFILE
