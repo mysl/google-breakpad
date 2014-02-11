@@ -180,8 +180,10 @@ void ExceptionHandlerTest::DoCrashInvalidParameter() {
           google_breakpad::ExceptionHandler::HANDLER_INVALID_PARAMETER,
           kFullDumpType, kPipeName, NULL);
 
+#ifdef _MSC_VER
   // Disable the message box for assertions
   _CrtSetReportMode(_CRT_ASSERT, 0);
+#endif
 
   // Although this is executing in the child process of the death test,
   // if it's not true we'll still get an error rather than the crash
@@ -212,8 +214,10 @@ void ExceptionHandlerTest::DoCrashPureVirtualCall() {
           google_breakpad::ExceptionHandler::HANDLER_PURECALL,
           kFullDumpType, kPipeName, NULL);
 
+#ifdef _MSC_VER
   // Disable the message box for assertions
   _CrtSetReportMode(_CRT_ASSERT, 0);
+#endif
 
   // Although this is executing in the child process of the death test,
   // if it's not true we'll still get an error rather than the crash
