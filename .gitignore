@@ -2,8 +2,15 @@
 *.a
 *.mk
 *.o
+*.opensdf
+*.sdf
 *.sln
+*.v12.suo
 *.vcproj
+*.vcproj
+*.vcproj.user
+*.vcxproj
+*.vcxproj.user
 .deps
 .dirstamp
 Makefile
