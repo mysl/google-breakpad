@@ -54,7 +54,7 @@
       'conditions': [
           [ '"<(GENERATOR)" == "make"', {
               'ldflags': [
-                  '-Wl,--subsystem=2',
+                  '-Wl,--subsystem=2', '-municode'
               ],
               'rules': [
                   { 'rule_name': 'windres',
