@@ -61,7 +61,7 @@
                     'extension': 'rc',
                     'inputs'   : [ ],
                     'outputs'  : [ '$(builddir)/<(RULE_INPUT_ROOT).o' ],
-                    'action'   : [ 'windres', '--input=<(RULE_INPUT_PATH)', '--output=$(builddir)/<(RULE_INPUT_ROOT).o', '--input-format=rc', '--output-format=coff', '-v', '--use-temp-file' ],
+                    'action'   : [ '$(RC)', '--input=<(RULE_INPUT_PATH)', '--output=$(builddir)/<(RULE_INPUT_ROOT).o', '--input-format=rc', '--output-format=coff', '-v', '--use-temp-file' ],
                     'message'  : 'Compiling Windows resources',
                     'process_outputs_as_sources' : 1,
                 },
