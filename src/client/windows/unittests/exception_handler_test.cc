@@ -197,7 +197,7 @@ struct PureVirtualCallBase {
   PureVirtualCallBase() {
     // We have to reinterpret so the linker doesn't get confused because the
     // method isn't defined.
-    reinterpret_cast<PureVirtualCallBase*>(this)->PureFunction();
+    reinterpret_cast<PureVirtualCallBase*>(0)->PureFunction();
   }
   virtual ~PureVirtualCallBase() {}
   virtual void PureFunction() const = 0;
