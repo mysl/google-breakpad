@@ -36,11 +36,11 @@ namespace google_breakpad {
 
 const int kPipeBusyWaitTimeoutMs = 2000;
 
-#ifdef _DEBUG
+//#ifdef _DEBUG
 const DWORD kWaitForServerTimeoutMs = INFINITE;
-#else
-const DWORD kWaitForServerTimeoutMs = 15000;
-#endif
+//#else
+//const DWORD kWaitForServerTimeoutMs = 15000;
+//#endif
 
 const int kPipeConnectMaxAttempts = 2;
 
