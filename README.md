@@ -9,6 +9,13 @@ See README
 
 ### Preparation
 
+Since git-svn ignores svn externals, this repository is missing the gyp and
+gtest dependencies.  Run the update-svn-externals script to add them.
+
+```
+./fetch-svn-externals
+```
+
 Run autoreconf to generate ./configure
 
 ````
@@ -23,9 +30,6 @@ autoreconf -fvi
 
 will produce dump\_syms, minidump\_dump, minidump\_stackwalk, libbreakpad.a
 and for MinGW libcrash\_generation_client.a, libcrash\_generation_server.a, crash\_generation_app.exe
-
-Note that since git-svn ignores svn externals, this repository is missing the
-gyp and gtest dependencies.
 
 ## Using
 
