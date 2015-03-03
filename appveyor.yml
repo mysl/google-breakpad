@@ -1,0 +1,51 @@
+version: '{build}'
+branches:
+  only:
+  - pecoff-dwarf-on-svn-rev-1418
+skip_tags: true
+os: Unstable
+environment:
+  CYGWIN_ROOT: C:\cygwin
+  CYGWIN_MIRROR: http://cygwin.mirror.constant.com
+  CYGWIN_PORTS_MIRROR: http://mirrors.kernel.org/sourceware/cygwinports
+  CYGwIN_PORTS_KEY: http://cygwinports.org/ports.gpg
+  CACHE: C:\cache
+  matrix:
+  - HOST: i686-w64-mingw32
+  - HOST: x86_64-w64-mingw32
+install:
+- echo HOST is %HOST%
+- if "%HOST%"=="i686-w64-mingw32" set PKGARCH="mingw64-i686"
+- if "%HOST%"=="x86_64-w64-mingw32" set PKGARCH="mingw64-x86_64"
+- echo PKGARCH is %PKGARCH%
+- if NOT DEFINED PKGARCH exit 1
+- echo CACHE is %CACHE%
+- if not exist %CACHE% mkdir %CACHE%
+- set SETUP=setup-x86.exe
+- appveyor DownloadFile http://www.dronecode.org.uk/cygwin/%SETUP% -FileName %CYGWIN_ROOT%\%SETUP%
+- echo Updating Cygwin
+- '%CYGWIN_ROOT%\%SETUP% -qnNdO -R "%CYGWIN_ROOT%" -s "%CYGWIN_MIRROR%" -l "%CACHE%"'
+- echo Setting up Cygwin dependencies
+- '%CYGWIN_ROOT%\%SETUP% -qnNdO -R "%CYGWIN_ROOT%" -s "%CYGWIN_MIRROR%" -s "%CYGWIN_PORTS_MIRROR%" -K "%CYGwIN_PORTS_KEY%" -l "%CACHE%" -P "autoconf,automake,git-svn,libtool,make,%PKGARCH%-curl,%PKGARCH%-headers,%PKGARCH%-gcc-g++,pkg-config,python"'
+- echo Done setting up Cygwin
+cache: C:\cache
+build_script:
+- 'echo Cygwin root is: %CYGWIN_ROOT%'
+- 'echo Build folder is: %APPVEYOR_BUILD_FOLDER%'
+- 'echo Repo build branch is: %APPVEYOR_REPO_BRANCH%'
+- 'echo Repo build commit is: %APPVEYOR_REPO_COMMIT%'
+- SET PATH=%CYGWIN_ROOT%/bin
+- echo fetching svn externals
+- '%CYGWIN_ROOT%/bin/bash -lc "cd $APPVEYOR_BUILD_FOLDER; exec 0</dev/null; ./fetch-svn-externals"'
+- echo autoreconf running...
+- '%CYGWIN_ROOT%/bin/bash -lc "cd $APPVEYOR_BUILD_FOLDER; exec 0</dev/null; autoreconf -fvi"'
+- echo configure running...
+- '%CYGWIN_ROOT%/bin/bash -lc "cd $APPVEYOR_BUILD_FOLDER; exec 0</dev/null; ./configure --prefix=/usr --host=%HOST% --enable-silent-rules"'
+- echo make running...
+- '%CYGWIN_ROOT%/bin/bash -lc "cd $APPVEYOR_BUILD_FOLDER; exec 0</dev/null; make"'
+- echo make install running...
+- '%CYGWIN_ROOT%/bin/bash -lc "cd $APPVEYOR_BUILD_FOLDER; exec 0</dev/null; make install DESTDIR=./staging"'
+test: off
+artifacts:
+- path: staging
+deploy: off
