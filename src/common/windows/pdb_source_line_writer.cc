@@ -43,6 +43,7 @@
 #include <ImageHlp.h>
 #include <stdio.h>
 
+#include <cassert>
 #include <limits>
 #include <set>
 
@@ -692,61 +693,32 @@ bool PDBSourceLineWriter::PrintFrameDataUsingPDB() {
   return true;
 }
 
-bool PDBSourceLineWriter::PrintFrameDataUsingEXE() {
-  if (code_file_.empty() && !FindPEFile()) {
-    fprintf(stderr, "Couldn't locate EXE or DLL file.\n");
-    return false;
-  }
-
-  // Convert wchar to native charset because ImageLoad only takes
-  // a PSTR as input.
-  string code_file;
-  if (!WindowsStringUtils::safe_wcstombs(code_file_, &code_file)) {
-    return false;
-  }
-
-  AutoImage img(ImageLoad((PSTR)code_file.c_str(), NULL));
-  if (!img) {
-    fprintf(stderr, "Failed to load %s\n", code_file.c_str());
-    return false;
-  }
-  PIMAGE_OPTIONAL_HEADER64 optional_header =
-    &(reinterpret_cast<PIMAGE_NT_HEADERS64>(img->FileHeader))->OptionalHeader;
-  if (optional_header->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-    fprintf(stderr, "Not a PE32+ image\n");
-    return false;
-  }
-
-  // Read Exception Directory
-  DWORD exception_rva = optional_header->
-    DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].VirtualAddress;
-  DWORD exception_size = optional_header->
-    DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].Size;
+// Prints CFI from xdata/pdata
+//
+// Performing the translation of RVA to a real pointer is very different for a
+// XDATA/PDATA streams read from a PDB, and XDATA/PDATA found in the loaded
+// image of an executable, so we specialize this function for each case with
+// RvaToVaTraits
+//
+template <typename RvaToVaTraits>
+static bool PrintCFIFromXData(FILE *output, PVOID pdata, size_t pdata_size,
+                              const typename RvaToVaTraits &t) {
   PIMAGE_RUNTIME_FUNCTION_ENTRY funcs =
-    static_cast<PIMAGE_RUNTIME_FUNCTION_ENTRY>(
-        ImageRvaToVa(img->FileHeader,
-                     img->MappedAddress,
-                     exception_rva,
-                     &img->LastRvaSection));
-  for (DWORD i = 0; i < exception_size / sizeof(*funcs); i++) {
+    static_cast<PIMAGE_RUNTIME_FUNCTION_ENTRY>(pdata);
+
+  for (size_t i = 0; i < pdata_size / sizeof(*funcs) ; i++) {
     DWORD unwind_rva = funcs[i].UnwindInfoAddress;
     // handle chaining
     while (unwind_rva & 0x1) {
       unwind_rva ^= 0x1;
       PIMAGE_RUNTIME_FUNCTION_ENTRY chained_func =
         static_cast<PIMAGE_RUNTIME_FUNCTION_ENTRY>(
-            ImageRvaToVa(img->FileHeader,
-                         img->MappedAddress,
-                         unwind_rva,
-                         &img->LastRvaSection));
+            t.PDataRvaToVa(unwind_rva));
       unwind_rva = chained_func->UnwindInfoAddress;
     }
 
     UnwindInfo *unwind_info = static_cast<UnwindInfo *>(
-        ImageRvaToVa(img->FileHeader,
-                     img->MappedAddress,
-                     unwind_rva,
-                     &img->LastRvaSection));
+        t.XDataRvaToVa(unwind_rva));
 
     DWORD stack_size = 8;  // minimal stack size is 8 for RIP
     DWORD rip_offset = 8;
@@ -803,33 +775,162 @@ bool PDBSourceLineWriter::PrintFrameDataUsingEXE() {
         }
       }
       if (unwind_info->flags & UNW_FLAG_CHAININFO) {
+        // unwind_code[] is followed by an IMAGE_RUNTIME_FUNCTION_ENTRY
         PIMAGE_RUNTIME_FUNCTION_ENTRY chained_func =
           reinterpret_cast<PIMAGE_RUNTIME_FUNCTION_ENTRY>(
               (unwind_info->unwind_code +
               ((unwind_info->count_of_codes + 1) & ~1)));
 
         unwind_info = static_cast<UnwindInfo *>(
-            ImageRvaToVa(img->FileHeader,
-                         img->MappedAddress,
-                         chained_func->UnwindInfoAddress,
-                         &img->LastRvaSection));
+            t.XDataRvaToVa(chained_func->UnwindInfoAddress));
       } else {
         unwind_info = NULL;
       }
     } while (unwind_info);
-    fprintf(output_, "STACK CFI INIT %x %x .cfa: $rsp .ra: .cfa %d - ^\n",
+    fprintf(output, "STACK CFI INIT %x %x .cfa: $rsp .ra: .cfa %d - ^\n",
             funcs[i].BeginAddress,
             funcs[i].EndAddress - funcs[i].BeginAddress, rip_offset);
-    fprintf(output_, "STACK CFI %x .cfa: $rsp %d +\n",
+    fprintf(output, "STACK CFI %x .cfa: $rsp %d +\n",
             funcs[i].BeginAddress, stack_size);
   }
 
   return true;
 }
 
+// In a LOADED_IMAGE, we can simply use ImageRvaToVa() to translate RVAs
+class ImageRvaToVaTraits {
+ public:
+  ImageRvaToVaTraits(PLOADED_IMAGE img)
+      : img_(img)
+  {
+  };
+
+  PVOID XDataRvaToVa(DWORD rva) const {
+    return ImageRvaToVa(img_->FileHeader,
+                        img_->MappedAddress,
+                        rva,
+                        &img_->LastRvaSection);
+  };
+
+  PVOID PDataRvaToVa(DWORD rva) const {
+    return ImageRvaToVa(img_->FileHeader,
+                        img_->MappedAddress,
+                        rva,
+                        &img_->LastRvaSection);
+  };
+
+ private:
+  PLOADED_IMAGE img_;
+};
+
+bool PDBSourceLineWriter::PrintFrameDataUsingEXE() {
+  if (code_file_.empty() && !FindPEFile()) {
+    fprintf(stderr, "Couldn't locate EXE or DLL file.\n");
+    return false;
+  }
+
+  // Convert wchar to native charset because ImageLoad only takes
+  // a PSTR as input.
+  string code_file;
+  if (!WindowsStringUtils::safe_wcstombs(code_file_, &code_file)) {
+    return false;
+  }
+
+  AutoImage img(ImageLoad((PSTR)code_file.c_str(), NULL));
+  if (!img) {
+    fprintf(stderr, "Failed to load %s\n", code_file.c_str());
+    return false;
+  }
+  PIMAGE_OPTIONAL_HEADER64 optional_header =
+    &(reinterpret_cast<PIMAGE_NT_HEADERS64>(img->FileHeader))->OptionalHeader;
+  if (optional_header->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+    fprintf(stderr, "Not a PE32+ image\n");
+    return false;
+  }
+
+  // Read Exception Directory
+  DWORD exception_rva = optional_header->
+    DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].VirtualAddress;
+  DWORD exception_size = optional_header->
+    DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION].Size;
+
+  PVOID pdata = static_cast<PVOID>(
+        ImageRvaToVa(img->FileHeader,
+                     img->MappedAddress,
+                     exception_rva,
+                     &img->LastRvaSection));
+
+  ImageRvaToVaTraits t(img);
+
+  return PrintCFIFromXData(output_, pdata, exception_size, t);
+}
+
+// We have the XDATA/PDATA streams from the PDB, along with their base RVAs
+// provided by IDiaImageData.  It is assumed that all the RVAs we access lie
+// within the range of RVAs covered by the stream.
+class PdbRvaToVaTraits {
+ public:
+  PdbRvaToVaTraits(PVOID pdata, size_t pdata_size, DWORD pdata_base_rva,
+                   PVOID xdata, size_t xdata_size, DWORD xdata_base_rva)
+      : pdata_(pdata), pdata_size_(pdata_size), pdata_base_rva_(pdata_base_rva),
+        xdata_(xdata), xdata_size_(xdata_size), xdata_base_rva_(xdata_base_rva)
+  {
+  };
+
+  PVOID XDataRvaToVa(DWORD rva) const {
+    assert(rva >= xdata_base_rva_);
+    assert(rva < xdata_base_rva_ + xdata_size_);
+
+    return rva - xdata_base_rva_ + static_cast<PBYTE>(xdata_);
+  };
+
+  PVOID PDataRvaToVa(DWORD rva) const {
+    assert(rva >= pdata_base_rva_);
+    assert(rva < pdata_base_rva_ + pdata_size_);
+
+    return rva - pdata_base_rva_ + static_cast<PBYTE>(pdata_);
+  };
+
+ private:
+  PVOID pdata_;
+  size_t pdata_size_;
+  DWORD pdata_base_rva_;
+  PVOID xdata_;
+  size_t xdata_size_;
+  DWORD xdata_base_rva_;
+};
+
+bool PDBSourceLineWriter::PrintFrameDataUsingPDBXData() {
+  static const wchar_t kPdataStreamName[] = L"PDATA";
+  static const wchar_t kXdataStreamName[] = L"XDATA";
+
+  std::vector<BYTE> pdata;
+  std::vector<BYTE> xdata;
+  DWORD pdata_base_rva;
+  DWORD xdata_base_rva;
+
+  if (FindAndLoadDebugStream(kPdataStreamName, session_, &pdata,
+                             &pdata_base_rva) && pdata_base_rva &&
+      FindAndLoadDebugStream(kXdataStreamName, session_, &xdata,
+                             &xdata_base_rva) && xdata_base_rva) {
+
+    PdbRvaToVaTraits t(&pdata[0], pdata.size(), pdata_base_rva,
+                       &xdata[0], xdata.size(), xdata_base_rva);
+
+    return PrintCFIFromXData(output_, &pdata[0], pdata.size(), t);
+  }
+
+  return false;
+}
+
 bool PDBSourceLineWriter::PrintFrameData() {
   PDBModuleInfo info;
   if (GetModuleInfo(&info) && info.cpu == L"x86_64") {
+    // Print CFI using .pdata/.xdata streams in PDB
+    if (PrintFrameDataUsingPDBXData())
+      return true;
+    // If they are not present, fall-back to reading the .pdata/.xdata from the
+    // corresponding PE/COFF executable, if we can find it.
     return PrintFrameDataUsingEXE();
   } else {
     return PrintFrameDataUsingPDB();

@@ -31,6 +31,8 @@
 #ifndef COMMON_WINDOWS_DIA_UTIL_H_
 #define COMMON_WINDOWS_DIA_UTIL_H_
 
+#include <cassert>
+
 #include <Windows.h>
 #include <dia2.h>
 
@@ -42,6 +44,70 @@ namespace google_breakpad {
 bool FindDebugStream(const wchar_t* name,
                      IDiaSession* session,
                      IDiaEnumDebugStreamData** debug_stream);
+
+// A template which finds the debug stream with the given |name| in the given
+// |session|, and populates |table|, a vector of a fixed size type
+// |T::value_type|, with the stream's contents, cast directly into |T|.  |rva|
+// contains the base RVA of the the debug stream if available, otherwise 0.
+template <typename T>
+bool FindAndLoadDebugStream(const wchar_t* name,
+                            IDiaSession* session,
+                            T* table,
+                            DWORD *rva) {
+  assert(name != NULL);
+  assert(session != NULL);
+  assert(table != NULL);
+  *rva = 0;
+
+  CComPtr<IDiaEnumDebugStreamData> stream;
+  if (!FindDebugStream(name, session, &stream))
+    return false;
+  assert(stream.p != NULL);
+
+  LONG count = 0;
+  if (FAILED(stream->get_Count(&count))) {
+    fprintf(stderr, "IDiaEnumDebugStreamData::get_Count failed for stream "
+                    "\"%ws\"\n", name);
+    return false;
+  }
+
+  // Get the length of the stream in bytes.
+  DWORD bytes_read = 0;
+  ULONG count_read = 0;
+  if (FAILED(stream->Next(count, 0, &bytes_read, NULL, &count_read))) {
+    fprintf(stderr, "IDiaEnumDebugStreamData::Next failed while reading "
+                    "length of stream \"%ws\"\n", name);
+    return false;
+  }
+
+  // Ensure it's consistent with the data type.
+  DWORD bytes_expected = count * sizeof(T::value_type);
+  if (count * sizeof(T::value_type) != bytes_read) {
+    fprintf(stderr, "DIA debug stream \"%ws\" has an unexpected length", name);
+    return false;
+  }
+
+  // Get the RVA, if available
+  CComPtr<IDiaImageData> pImageData;
+  if (SUCCEEDED(stream->QueryInterface(__uuidof(IDiaImageData),
+                                       (void **)&pImageData))) {
+    pImageData->get_relativeVirtualAddress(rva);
+  }
+
+  // Read the table.
+  table->resize(count);
+  bytes_read = 0;
+  count_read = 0;
+  if (FAILED(stream->Next(count, bytes_expected, &bytes_read,
+                          reinterpret_cast<BYTE*>(&table->at(0)),
+                          &count_read))) {
+    fprintf(stderr, "IDiaEnumDebugStreamData::Next failed while reading "
+                    "data from stream \"%ws\"\n", name);
+    return false;
+  }
+
+  return true;
+}
 
 // Finds the first table implementing the COM interface with ID |iid| in the
 // given |session|. Returns true on success, false on error or if no such
