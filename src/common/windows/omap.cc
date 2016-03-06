@@ -170,51 +170,8 @@ bool EndpointIndexLess(const EndpointIndex& ei1, const EndpointIndex& ei2) {
 bool FindAndLoadOmapTable(const wchar_t* name,
                           IDiaSession* session,
                           OmapTable* table) {
-  assert(name != NULL);
-  assert(session != NULL);
-  assert(table != NULL);
-
-  CComPtr<IDiaEnumDebugStreamData> stream;
-  if (!FindDebugStream(name, session, &stream))
-    return false;
-  assert(stream.p != NULL);
-
-  LONG count = 0;
-  if (FAILED(stream->get_Count(&count))) {
-    fprintf(stderr, "IDiaEnumDebugStreamData::get_Count failed for stream "
-                    "\"%ws\"\n", name);
-    return false;
-  }
-
-  // Get the length of the stream in bytes.
-  DWORD bytes_read = 0;
-  ULONG count_read = 0;
-  if (FAILED(stream->Next(count, 0, &bytes_read, NULL, &count_read))) {
-    fprintf(stderr, "IDiaEnumDebugStreamData::Next failed while reading "
-                    "length of stream \"%ws\"\n", name);
-    return false;
-  }
-
-  // Ensure it's consistent with the OMAP data type.
-  DWORD bytes_expected = count * sizeof(OmapTable::value_type);
-  if (count * sizeof(OmapTable::value_type) != bytes_read) {
-    fprintf(stderr, "DIA debug stream \"%ws\" has an unexpected length", name);
-    return false;
-  }
-
-  // Read the table.
-  table->resize(count);
-  bytes_read = 0;
-  count_read = 0;
-  if (FAILED(stream->Next(count, bytes_expected, &bytes_read,
-                          reinterpret_cast<BYTE*>(&table->at(0)),
-                          &count_read))) {
-    fprintf(stderr, "IDiaEnumDebugStreamData::Next failed while reading "
-                    "data from stream \"%ws\"\n", name);
-    return false;
-  }
-
-  return true;
+  DWORD rva;
+  return FindAndLoadDebugStream(name, session, table, &rva);
 }
 
 // This determines the original image length by looking through the segment
