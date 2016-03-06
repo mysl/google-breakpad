@@ -798,6 +798,8 @@ bool PDBSourceLineWriter::PrintFrameDataUsingEXE() {
             rip_offset += 80;
             break;
           }
+        default:
+          fprintf(stderr, "Unknown UWOP %x\n", unwind_code->unwind_operation_code);
         }
       }
       if (unwind_info->flags & UNW_FLAG_CHAININFO) {
