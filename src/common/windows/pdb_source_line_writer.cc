@@ -1389,7 +1389,6 @@ bool PDBSourceLineWriter::GetPEInfo(PEModuleInfo *info) {
   }
 
   if (code_file_.empty() && !FindPEFile()) {
-    fprintf(stderr, "Couldn't locate EXE or DLL file.\n");
     return false;
   }
 

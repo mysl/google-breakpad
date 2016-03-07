@@ -59,6 +59,10 @@ const wchar_t* kRootNames[] = {
   L"omap_reorder_bbs",  
   // A 64bit PDB file with no OMAP data.
   L"dump_syms_regtest64",
+  // A 64bit PDB file with PDATA
+  L"pdb_pdata_in_pdb",
+  // A 64bit PDB file with an exe to provide PDATA
+  L"pdb_pdata_in_exe",
 };
 
 void TrimLastComponent(const std::wstring& path,
@@ -163,7 +167,7 @@ void GetFileContents(const std::wstring& path, std::string* content) {
   }
 }
 
-class DumpSymsRegressionTest : public testing::Test {
+class DumpSymsRegressionTest : public testing::TestWithParam<const wchar_t *> {
  public:
   virtual void SetUp() {
     std::wstring self_dir;
@@ -180,9 +184,8 @@ class DumpSymsRegressionTest : public testing::Test {
 
 }  //namespace
 
-TEST_F(DumpSymsRegressionTest, EnsureDumpedSymbolsMatch) {
-  for (size_t i = 0; i < sizeof(kRootNames) / sizeof(kRootNames[0]); ++i) {
-    const wchar_t* root_name = kRootNames[i];
+TEST_P(DumpSymsRegressionTest, EnsureDumpedSymbolsMatch) {
+    const wchar_t* root_name = GetParam();
     std::wstring root_path = testdata_dir + L"\\" + root_name;
 
     std::wstring sym_path = root_path + L".sym";
@@ -196,8 +199,10 @@ TEST_F(DumpSymsRegressionTest, EnsureDumpedSymbolsMatch) {
     ASSERT_NO_FATAL_FAILURE(RunCommand(command_line, &symbols));
 
     EXPECT_EQ(expected_symbols, symbols);
-  }
 }
+
+INSTANTIATE_TEST_CASE_P(DumpSyms, DumpSymsRegressionTest,
+                        testing::ValuesIn(kRootNames));
 
 }  // namespace dump_syms
 }  // namespace windows
