@@ -720,6 +720,10 @@ static bool PrintCFIFromXData(FILE *output, PVOID pdata, size_t pdata_size,
     UnwindInfo *unwind_info = static_cast<UnwindInfo *>(
         t.XDataRvaToVa(unwind_rva));
 
+    if (unwind_info->version > 2) {
+      fprintf(stderr, "Unknown UnwindInfo version %d\n", unwind_info->version);
+    }
+
     DWORD stack_size = 8;  // minimal stack size is 8 for RIP
     DWORD rip_offset = 8;
     do {
@@ -748,8 +752,12 @@ static bool PrintCFIFromXData(FILE *output, PVOID pdata, size_t pdata_size,
             break;
           }
           case UWOP_SET_FPREG:
-          case UWOP_SAVE_XMM:
-          case UWOP_SAVE_XMM_FAR:
+            break;
+          case UWOP_SAVE_XMM: // UWOP_EPILOG in v2
+            break;
+          case UWOP_SAVE_XMM_FAR: // UWOP_SPARE in v2
+            if (unwind_info->version == 2)
+              fprintf(stderr, "Undefined UWOP_SPARE used\n");
             break;
           case UWOP_SAVE_NONVOL:
           case UWOP_SAVE_XMM128: {
