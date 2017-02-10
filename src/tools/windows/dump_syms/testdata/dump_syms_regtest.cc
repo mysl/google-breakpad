@@ -27,8 +27,13 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// with 32-bit cl
 // cl /Zi dump_syms_regtest.cc /link /PROFILE
 // dump_syms dump_syms_regtest.pdb > dump_syms_regtest.sym
+
+// with 64-bit cl
+// cl /Zi dump_syms_regtest.cc /link /PROFILE /out:dump_syms_regtest64.exe
+// dump_syms dump_syms_regtest.pdb > dump_syms_regtest64.sym
 
 namespace google_breakpad {
 
