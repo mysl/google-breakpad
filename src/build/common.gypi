@@ -328,6 +328,7 @@
           '_CRT_NONSTDC_NO_DEPRECATE',
           # This is required for ATL to use XP-safe versions of its functions.
           '_USING_V110_SDK71_',
+          '_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING',
         ],
         'msvs_disabled_warnings': [4800],
         'msvs_settings': {
