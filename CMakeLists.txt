@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.12)
 add_definitions(-DNO_STABS_SUPPORT)
 
 if(APPLE)
+add_definitions(-DHAVE_MACH_O_NLIST_H)
+
 add_executable(dump_syms
     src/tools/mac/dump_syms/dump_syms_tool.cc
     src/common/mac/macho_walker.cc
@@ -19,6 +21,8 @@ add_executable(dump_syms
     src/common/language.cc
     src/common/dwarf_line_to_module.cc
     src/common/path_helper.cc
+    src/common/stabs_reader.cc
+    src/common/stabs_to_module.cc
     src/common/dwarf_cfi_to_module.cc
     src/common/dwarf_cu_to_module.cc
     src/common/dwarf/functioninfo.cc
@@ -66,10 +70,12 @@ elseif(WIN32)
           "$ENV{VSINSTALLDIR}/DIA SDK/include"
         )
 
-        target_link_libraries(dump_syms PRIVATE
-            "$ENV{VSINSTALLDIR}/DIA SDK/lib/diaguids.lib"
-            imagehlp
-        )
+        target_link_libraries(dump_syms PRIVATE imagehlp)
+        if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+            target_link_libraries(dump_syms PRIVATE "$ENV{VSINSTALLDIR}/DIA SDK/lib/amd64/diaguids.lib")
+        else()
+            target_link_libraries(dump_syms PRIVATE "$ENV{VSINSTALLDIR}/DIA SDK/lib/diaguids.lib")
+        endif()
     endif()
 elseif("${CMAKE_SYSTEM}" MATCHES "Linux")
     add_executable(dump_syms
