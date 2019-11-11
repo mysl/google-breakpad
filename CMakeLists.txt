@@ -1,3 +1,6 @@
+# This is not a full replacement of the original gyp buildsystem
+# It's just for building the dump_syms tool.
+
 cmake_minimum_required(VERSION 3.12)
 
 add_definitions(-DNO_STABS_SUPPORT)
