@@ -34,9 +34,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/mman.h>
-
 #include <memory>
 #include <vector>
+#include "compat_mingw.h"
 
 #if defined(MEMORY_SANITIZER)
 #include <sanitizer/msan_interface.h>

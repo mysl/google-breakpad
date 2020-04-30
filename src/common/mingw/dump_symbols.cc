@@ -53,7 +53,6 @@
 #include <utility>
 #include <vector>
 
-#include "compat_mingw.h"
 #include "common/dwarf/bytereader-inl.h"
 #include "common/dwarf/dwarf2diehandler.h"
 #include "common/dwarf_cfi_to_module.h"

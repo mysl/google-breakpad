@@ -37,26 +37,42 @@ add_executable(dump_syms
 )
 elseif(WIN32)
     if(MINGW)
+	add_definitions(-DMINGW)
+	add_definitions(-D__ARM_EABI__)
+	# set (CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+	set(CMAKE_CXX_STANDARD_LIBRARIES "-static-libgcc -static-libstdc++ ${CMAKE_CXX_STANDARD_LIBRARIES}")
+    set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
+	include_directories(/mingw64/x86_64-w64-mingw32/include
+	                    src/third_party/musl/include
+	                    src/common/mingw/include)
+	link_directories(src/common/mingw/lib
+					/mingw64/x86_64-w64-mingw32/lib)
+
         add_executable(dump_syms
-            src/tools/windows/dump_syms_dwarf/dump_syms.cc
+        src/tools/windows/dump_syms_elf/dump_syms.cc
+		src/common/mingw/compat_mingw.cc
 
-            src/common/pecoff/dump_symbols.cc
-            src/common/dwarf_cfi_to_module.cc
-            src/common/module.cc
-            src/common/pecoff/pecoffutils.cc
-            src/common/pecoff/pecoff_file_id.cc
-            src/common/stabs_to_module.cc
-            src/common/dwarf_cu_to_module.cc
-            src/common/language.cc
-            src/common/dwarf/dwarf2diehandler.cc
-            src/common/dwarf_line_to_module.cc
-            src/common/dwarf/dwarf2reader.cc
-            src/common/dwarf/bytereader.cc
-            src/common/pecoff/pecoff_file_id.cc
+        src/common/module.cc
+        src/common/language.cc
+        src/common/dwarf_line_to_module.cc
+        src/common/path_helper.cc
+        src/common/dwarf_cfi_to_module.cc
+        src/common/dwarf_cu_to_module.cc
+        src/common/dwarf/bytereader.cc
+        src/common/dwarf/dwarf2reader.cc
+        src/common/dwarf/dwarf2diehandler.cc
+        src/common/linux/crc32.cc
+        src/common/linux/dump_symbols.cc
+        src/common/linux/elf_core_dump.cc
+        src/common/linux/elf_symbols_to_module.cc
+        src/common/linux/elfutils.cc
+        src/common/linux/file_id.cc
+        src/common/linux/linux_libc_support.cc
+        src/common/linux/memory_mapped_file.cc
         )
-
         target_link_libraries(dump_syms
-            stdc++
+		    mman
+            ws2_32
         )
     elseif(MSVC)
         add_executable(dump_syms

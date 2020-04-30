@@ -35,7 +35,7 @@
 #include <cxxabi.h>
 #include <elf.h>
 #include <string.h>
-
+#include "compat_mingw.h"
 #include "common/byte_cursor.h"
 #include "common/module.h"
 

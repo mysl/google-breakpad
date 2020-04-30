@@ -32,6 +32,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "compat_mingw.h"
 #include "common/linux/linux_libc_support.h"
 #include "common/linux/elfutils-inl.h"
 

@@ -33,8 +33,9 @@
 //
 
 #include "common/linux/file_id.h"
-
+#ifndef MINGW
 #include <arpa/inet.h>
+#endif
 #include <assert.h>
 #include <string.h>
 

@@ -38,7 +38,7 @@
 #include <sys/stat.h>
 #endif
 #include <unistd.h>
-
+#include "compat_mingw.h"
 #include "common/memory_range.h"
 #include "third_party/lss/linux_syscall_support.h"
 
