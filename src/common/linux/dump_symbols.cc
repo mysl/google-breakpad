@@ -388,8 +388,16 @@ bool LoadELF(const string& obj_file, MmapWrapper* map_wrapper,
             obj_file.c_str(), strerror(errno));
     return false;
   }
+#ifdef MINGW
+// HACKHACK: when compiling with MinGW and runing dump_syms on windows, the CreateFileMapping
+// API will return error 0x5 (Access Denied). It's probably windows specific permission related
+// Since dump_syms only requires read permission, use PROT_READ here as a workaround.
+  void* obj_base = mmap(NULL, st.st_size,
+                        PROT_READ, MAP_PRIVATE, obj_fd, 0);
+#else                        
   void* obj_base = mmap(NULL, st.st_size,
                         PROT_READ | PROT_WRITE, MAP_PRIVATE, obj_fd, 0);
+#endif
   if (obj_base == MAP_FAILED) {
     fprintf(stderr, "Failed to mmap ELF file '%s': %s\n",
             obj_file.c_str(), strerror(errno));

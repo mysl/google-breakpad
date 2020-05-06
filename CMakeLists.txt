@@ -37,14 +37,16 @@ add_executable(dump_syms
 )
 elseif(WIN32)
     if(MINGW)
-	add_definitions(-DMINGW)
-	add_definitions(-D__ARM_EABI__)
-	# set (CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
+	set(CMAKE_BUILD_TYPE Debug)
 	set(CMAKE_CXX_STANDARD_LIBRARIES "-static-libgcc -static-libstdc++ ${CMAKE_CXX_STANDARD_LIBRARIES}")
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive")
 	include_directories(/mingw64/x86_64-w64-mingw32/include
 	                    src/third_party/musl/include
 	                    src/common/mingw/include)
+
+	add_definitions(-DMINGW)
+	add_definitions(-D__ARM_EABI__)
+
 	link_directories(src/common/mingw/lib
 					/mingw64/x86_64-w64-mingw32/lib)
 
