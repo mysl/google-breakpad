@@ -5,6 +5,7 @@
 google-breakpad with added support for Cygwin/MinGW:
 - A `dump_syms` tool which can read DWARF debugging information from PE/COFF executables.
 - The breakpad crash-reporting client libraries built using Makefiles rather than MSVC solutions.
+- update 2020-5-8: the dump_syms_elf_windows branch enabled building out a working dump_syms.exe which supports reading ELF binary
 
 ## Compiling
 
